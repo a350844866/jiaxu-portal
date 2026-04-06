@@ -1,0 +1,17 @@
+services:
+  jiaxu-portal:
+    build: .
+    container_name: jiaxu-portal
+    restart: unless-stopped
+    ports:
+      - "3200:3000"
+    environment:
+      - NODE_ENV=production
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - share-network
+
+networks:
+  share-network:
+    external: true
