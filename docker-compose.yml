@@ -7,6 +7,19 @@ services:
       - "3200:3000"
     environment:
       - NODE_ENV=production
+      - NPM_URL=${NPM_URL}
+      - NPM_EMAIL=${NPM_EMAIL}
+      - NPM_PASSWORD=${NPM_PASSWORD}
+      - NPM_ACCESS_LIST_ID=1
+      - SURGE_RULES_DIR=/data/surge-rules
+      - AUTH_DIR=/data/auth
+      - NACOS_BACKEND_URL=${NACOS_BACKEND_URL}
+      - NACOS_PROXY_SECRET=${NACOS_PROXY_SECRET}
+      - PROXIED_HOSTS=${PROXIED_HOSTS}
+      - PORTAL_ORIGIN=${PORTAL_ORIGIN}
+    volumes:
+      - ./data/surge-rules:/data/surge-rules
+      - ./data/auth:/data/auth
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

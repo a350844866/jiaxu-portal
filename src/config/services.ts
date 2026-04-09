@@ -4,6 +4,7 @@ export type ServiceCategory =
   | "iot-vehicle"
   | "cloud-files"
   | "monitoring-admin"
+  | "company"
 
 export interface ServiceDefinition {
   id: string
@@ -31,4 +32,16 @@ export interface HealthResult {
   status: "up" | "down" | "unknown"
   responseTimeMs: number | null
   checkedAt: string
+}
+
+/** Derive the user-facing internal URL from healthUrl (strip path, keep origin) */
+export function getInternalUrl(service: ServiceDefinition): string {
+  if (service.internalOnly) return service.url
+  // Relative URLs are portal-proxied, use as-is in all network modes
+  if (service.url.startsWith("/")) return service.url
+  try {
+    return new URL(service.healthUrl).origin
+  } catch {
+    return service.healthUrl
+  }
 }

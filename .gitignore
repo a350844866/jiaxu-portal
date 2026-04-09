@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -43,3 +44,6 @@ next-env.d.ts
 # personal service config — contains real IPs/domains
 # use src/config/services-data.example.ts as template
 src/config/services-data.ts
+
+# auth config — contains password hash, TOTP secret, JWT secret
+data/auth/config.json

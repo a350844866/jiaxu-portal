@@ -31,4 +31,10 @@ export const categories: CategoryDefinition[] = [
     description: "服务器管理、容器、网络",
     icon: "LayoutDashboard",
   },
+  {
+    id: "company",
+    label: "公司运维",
+    description: "公司测试环境管理与中间件",
+    icon: "Building2",
+  },
 ]

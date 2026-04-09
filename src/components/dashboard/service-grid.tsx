@@ -1,12 +1,17 @@
 "use client"
 
 import { useMemo } from "react"
-import { ServiceDefinition, HealthResult, ServiceCategory } from "@/config/services"
+import { ServiceDefinition, HealthResult } from "@/config/services"
 import { categories } from "@/config/categories-data"
 import { ServiceCard } from "./service-card"
 import { SearchBar } from "./search-bar"
 import { useServiceFilter } from "@/hooks/use-service-filter"
+import { useNetworkMode } from "@/hooks/use-network-mode"
+import { useHealthPolling } from "@/hooks/use-health-polling"
+import { useHiddenServices } from "@/hooks/use-hidden-services"
 import * as LucideIcons from "lucide-react"
+import { Pencil, Check } from "lucide-react"
+import { SurgeRuleEditor } from "./surge-rule-editor"
 
 interface ServiceGridProps {
   services: ServiceDefinition[]
@@ -21,27 +26,68 @@ function CategoryIcon({ name }: { name: string }) {
 
 export function ServiceGrid({ services, initialHealth }: ServiceGridProps) {
   const { query, setQuery, filtered } = useServiceFilter(services)
+  const networkMode = useNetworkMode()
+  const health = useHealthPolling(initialHealth)
+  const { editing, setEditing, toggle, isHidden } = useHiddenServices()
 
   const healthMap = useMemo(
-    () => Object.fromEntries(initialHealth.map((h) => [h.id, h])),
-    [initialHealth]
+    () => Object.fromEntries(health.map((h) => [h.id, h])),
+    [health]
+  )
+
+  // In editing mode show all services; otherwise filter out hidden ones
+  const visible = useMemo(
+    () => (editing ? filtered : filtered.filter((s) => !isHidden(s.id))),
+    [filtered, editing, isHidden]
   )
 
   const grouped = useMemo(() => {
     return categories
       .map((cat) => ({
         cat,
-        items: filtered.filter((s) => s.category === cat.id),
+        items: visible.filter((s) => s.category === cat.id),
       }))
       .filter((g) => g.items.length > 0)
-  }, [filtered])
+  }, [visible])
 
   return (
     <div className="space-y-8">
-      {/* Search bar — only show if not filtering already shows all */}
-      <div className="flex justify-end">
+      {/* Search bar + edit toggle */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-zinc-600">
+            {networkMode === "internal" ? "内网模式" : "外网模式"}
+          </span>
+          <button
+            onClick={() => setEditing(!editing)}
+            className={
+              "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors " +
+              (editing
+                ? "bg-emerald-900/60 text-emerald-300 hover:bg-emerald-900/80"
+                : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300")
+            }
+          >
+            {editing ? (
+              <>
+                <Check className="h-3 w-3" />
+                完成
+              </>
+            ) : (
+              <>
+                <Pencil className="h-3 w-3" />
+                编辑
+              </>
+            )}
+          </button>
+        </div>
         <SearchBar value={query} onChange={setQuery} />
       </div>
+
+      {editing && (
+        <p className="text-xs text-zinc-500">
+          点击卡片上的眼睛图标可以隐藏/显示服务
+        </p>
+      )}
 
       {grouped.length === 0 && (
         <div className="py-16 text-center text-zinc-500">
@@ -65,9 +111,16 @@ export function ServiceGrid({ services, initialHealth }: ServiceGridProps) {
                 key={service.id}
                 service={service}
                 health={healthMap[service.id]}
+                networkMode={networkMode}
+                editing={editing}
+                hidden={isHidden(service.id)}
+                onToggleHidden={() => toggle(service.id)}
               />
             ))}
           </div>
+
+          {/* Surge rule editor in company section */}
+          {cat.id === "company" && <SurgeRuleEditor />}
         </section>
       ))}
     </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Server } from "lucide-react"
+import { AuthSettings } from "@/components/dashboard/auth-settings"
 
 export function Header() {
   const [time, setTime] = useState("")
@@ -39,11 +40,14 @@ export function Header() {
           <p className="text-xs text-zinc-500">jiaxu-server-home</p>
         </div>
       </div>
-      {time && (
-        <span className="hidden sm:block text-sm text-zinc-500 tabular-nums">
-          {time}
-        </span>
-      )}
+      <div className="flex items-center gap-3">
+        {time && (
+          <span className="hidden sm:block text-sm text-zinc-500 tabular-nums">
+            {time}
+          </span>
+        )}
+        <AuthSettings />
+      </div>
     </header>
   )
 }

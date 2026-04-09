@@ -17,7 +17,7 @@ export default async function Home() {
       </div>
       <ServiceGrid services={services} initialHealth={health} />
       <footer className="mt-12 text-center text-xs text-zinc-600">
-        jiaxu-server-home · 192.168.31.66
+        jiaxu-server-home
       </footer>
     </main>
   )

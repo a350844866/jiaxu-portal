@@ -8,14 +8,29 @@ export async function checkServiceHealth(
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 5000)
 
-    const res = await fetch(service.healthUrl, {
-      method: "GET",
-      signal: controller.signal,
-      // Skip TLS verification for self-signed certs (Portainer, etc.)
-      ...(service.healthSkipTls
-        ? { next: { revalidate: 0 } }
-        : {}),
-    })
+    // For self-signed certs, temporarily disable TLS verification
+    let prevTls: string | undefined
+    if (service.healthSkipTls && service.healthUrl.startsWith("https")) {
+      prevTls = process.env.NODE_TLS_REJECT_UNAUTHORIZED
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+    }
+
+    let res: Response
+    try {
+      res = await fetch(service.healthUrl, {
+        method: "GET",
+        signal: controller.signal,
+        cache: "no-store",
+      })
+    } finally {
+      if (service.healthSkipTls) {
+        if (prevTls === undefined) {
+          delete process.env.NODE_TLS_REJECT_UNAUTHORIZED
+        } else {
+          process.env.NODE_TLS_REJECT_UNAUTHORIZED = prevTls
+        }
+      }
+    }
     clearTimeout(timeout)
 
     return {
