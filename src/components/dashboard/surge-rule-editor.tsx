@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { createPortal } from "react-dom"
 import {
   FileText,
   Save,
@@ -84,7 +85,7 @@ function AddRuleDialog({
     onClose()
   }
 
-  return (
+  return createPortal(
     <>
       <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -190,7 +191,8 @@ function AddRuleDialog({
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   )
 }
 
