@@ -21,6 +21,7 @@ export async function checkServiceHealth(
         method: "GET",
         signal: controller.signal,
         cache: "no-store",
+        redirect: "manual",
       })
     } finally {
       if (service.healthSkipTls) {
