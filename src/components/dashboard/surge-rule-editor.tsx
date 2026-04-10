@@ -89,7 +89,7 @@ function AddRuleDialog({
       <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
         <div
-          className="w-full max-w-sm bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl"
+          className="w-full max-w-sm max-h-[calc(100vh-2rem)] bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl flex flex-col overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -100,7 +100,7 @@ function AddRuleDialog({
             </button>
           </div>
 
-          <div className="p-4 space-y-4">
+          <div className="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
             {/* Rule type */}
             <div>
               <label className="block text-xs text-zinc-500 mb-1.5">规则类型</label>
@@ -172,7 +172,7 @@ function AddRuleDialog({
           </div>
 
           {/* Footer */}
-          <div className="flex justify-end gap-2 px-4 py-3 border-t border-zinc-800">
+          <div className="flex justify-end gap-2 px-4 py-3 border-t border-zinc-800 shrink-0">
             <button
               onClick={onClose}
               className="px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors"
