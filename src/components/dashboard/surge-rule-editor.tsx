@@ -49,10 +49,6 @@ function parseRules(text: string): ParsedRule[] {
     })
 }
 
-function serializeRules(rules: ParsedRule[]): string {
-  return rules.map((r) => r.raw).join("\n") + "\n"
-}
-
 function buildRuleLine(type: string, value: string, noResolve: boolean): string {
   const isIp = type === "IP-CIDR" || type === "IP-CIDR6" || type === "GEOIP"
   if (isIp && noResolve) {
@@ -299,7 +295,7 @@ export function SurgeRuleEditor() {
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 backdrop-blur-sm overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-zinc-800">
         <div className="flex items-center gap-2">
           <FileText className="h-4 w-4 text-zinc-400" />
           <span className="text-sm font-medium text-zinc-200">Surge 规则编辑</span>

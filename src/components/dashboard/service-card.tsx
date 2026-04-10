@@ -1,7 +1,7 @@
 "use client"
 
-import * as LucideIcons from "lucide-react"
-import { ExternalLink, Wifi, WifiOff, Eye, EyeOff } from "lucide-react"
+import { ExternalLink, Wifi, WifiOff, Eye, EyeOff, Globe } from "lucide-react"
+import { iconMap } from "@/lib/icon-map"
 import { cn } from "@/lib/utils"
 import { ServiceDefinition, HealthResult, getInternalUrl } from "@/config/services"
 import { StatusDot } from "./status-dot"
@@ -17,11 +17,8 @@ interface ServiceCardProps {
 }
 
 function DynamicIcon({ name, className }: { name: string; className?: string }) {
-  const Icon = (LucideIcons as unknown as Record<string, React.ComponentType<{ className?: string }>>)[name]
-  if (!Icon) {
-    const Fallback = LucideIcons.Globe
-    return <Fallback className={className} />
-  }
+  const Icon = iconMap[name]
+  if (!Icon) return <Globe className={className} />
   return <Icon className={className} />
 }
 

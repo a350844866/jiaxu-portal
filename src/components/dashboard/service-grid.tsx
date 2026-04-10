@@ -5,11 +5,12 @@ import { ServiceDefinition, HealthResult } from "@/config/services"
 import { categories } from "@/config/categories-data"
 import { ServiceCard } from "./service-card"
 import { SearchBar } from "./search-bar"
+import { StatusSummary } from "./status-summary"
 import { useServiceFilter } from "@/hooks/use-service-filter"
 import { useNetworkMode } from "@/hooks/use-network-mode"
 import { useHealthPolling } from "@/hooks/use-health-polling"
 import { useHiddenServices } from "@/hooks/use-hidden-services"
-import * as LucideIcons from "lucide-react"
+import { iconMap } from "@/lib/icon-map"
 import { Pencil, Check } from "lucide-react"
 import { SurgeRuleEditor } from "./surge-rule-editor"
 
@@ -19,7 +20,7 @@ interface ServiceGridProps {
 }
 
 function CategoryIcon({ name }: { name: string }) {
-  const Icon = (LucideIcons as unknown as Record<string, React.ComponentType<{ className?: string }>>)[name]
+  const Icon = iconMap[name]
   if (!Icon) return null
   return <Icon className="h-4 w-4 text-zinc-400" />
 }
@@ -52,6 +53,11 @@ export function ServiceGrid({ services, initialHealth }: ServiceGridProps) {
 
   return (
     <div className="space-y-8">
+      {/* Live status summary */}
+      <div>
+        <StatusSummary results={health} />
+      </div>
+
       {/* Search bar + edit toggle */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">

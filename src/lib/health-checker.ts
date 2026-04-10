@@ -1,69 +1,62 @@
 import { ServiceDefinition, HealthResult } from "@/config/services"
 
-export async function checkServiceHealth(
-  service: ServiceDefinition
-): Promise<HealthResult> {
+function checkOne(service: ServiceDefinition): Promise<HealthResult> {
   const start = Date.now()
-  try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 5000)
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 5000)
 
-    // For self-signed certs, temporarily disable TLS verification
-    let prevTls: string | undefined
-    if (service.healthSkipTls && service.healthUrl.startsWith("https")) {
-      prevTls = process.env.NODE_TLS_REJECT_UNAUTHORIZED
-      process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
-    }
-
-    let res: Response
-    try {
-      res = await fetch(service.healthUrl, {
-        method: "GET",
-        signal: controller.signal,
-        cache: "no-store",
-        redirect: "manual",
-      })
-    } finally {
-      if (service.healthSkipTls) {
-        if (prevTls === undefined) {
-          delete process.env.NODE_TLS_REJECT_UNAUTHORIZED
-        } else {
-          process.env.NODE_TLS_REJECT_UNAUTHORIZED = prevTls
-        }
-      }
-    }
-    clearTimeout(timeout)
-
-    return {
+  return fetch(service.healthUrl, {
+    method: "GET",
+    signal: controller.signal,
+    cache: "no-store",
+    redirect: "manual",
+  })
+    .then((res) => ({
       id: service.id,
-      status: res.ok || res.status < 500 ? "up" : "down",
+      status: (res.ok || res.status < 500 ? "up" : "down") as HealthResult["status"],
       responseTimeMs: Date.now() - start,
       checkedAt: new Date().toISOString(),
-    }
-  } catch {
-    return {
+    }))
+    .catch(() => ({
       id: service.id,
-      status: "down",
+      status: "down" as const,
       responseTimeMs: null,
       checkedAt: new Date().toISOString(),
-    }
-  }
+    }))
+    .finally(() => clearTimeout(timeout))
 }
 
 export async function checkAllServices(
   services: ServiceDefinition[]
 ): Promise<HealthResult[]> {
-  const results = await Promise.allSettled(
-    services.map((s) => checkServiceHealth(s))
+  const normal = services.filter(
+    (s) => !s.healthSkipTls || !s.healthUrl.startsWith("https")
   )
-  return results.map((r, i) =>
-    r.status === "fulfilled"
-      ? r.value
-      : {
-          id: services[i].id,
-          status: "unknown" as const,
-          responseTimeMs: null,
-          checkedAt: new Date().toISOString(),
-        }
+  const skipTls = services.filter(
+    (s) => s.healthSkipTls && s.healthUrl.startsWith("https")
   )
+
+  // Run normal checks concurrently
+  const normalResults = await Promise.all(normal.map(checkOne))
+
+  // Run TLS-skip checks in an isolated env window (no overlap with normal)
+  let skipResults: HealthResult[] = []
+  if (skipTls.length > 0) {
+    const prev = process.env.NODE_TLS_REJECT_UNAUTHORIZED
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+    try {
+      skipResults = await Promise.all(skipTls.map(checkOne))
+    } finally {
+      if (prev === undefined) {
+        delete process.env.NODE_TLS_REJECT_UNAUTHORIZED
+      } else {
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = prev
+      }
+    }
+  }
+
+  // Merge back in original order
+  const map = new Map<string, HealthResult>()
+  for (const r of [...normalResults, ...skipResults]) map.set(r.id, r)
+  return services.map((s) => map.get(s.id)!)
 }

@@ -16,7 +16,7 @@ export function SearchBar({ value, onChange }: SearchBarProps) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="搜索服务…"
-        className="h-9 w-48 rounded-lg border border-zinc-700 bg-zinc-800/60 pl-9 pr-8 text-sm text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-500 focus:bg-zinc-800 transition-all focus:w-64"
+        className="h-9 w-36 rounded-lg border border-zinc-700 bg-zinc-800/60 pl-9 pr-8 text-sm text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:border-zinc-500 focus:bg-zinc-800 transition-all focus:w-48 sm:w-48 sm:focus:w-64"
       />
       {value && (
         <button
