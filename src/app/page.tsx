@@ -5,7 +5,6 @@ import { ServiceGrid } from "@/components/dashboard/service-grid"
 import { TokenCard } from "@/components/dashboard/token-card"
 import { RateLimitCard } from "@/components/dashboard/rate-limit-card"
 import { ResourceRail } from "@/components/dashboard/resource-rail"
-import { CronJobsBlock } from "@/components/dashboard/cron-jobs-block"
 
 export const revalidate = 30
 
@@ -18,7 +17,6 @@ export default async function Home() {
       <div className="-mx-4 sm:-mx-6">
         <ResourceRail />
       </div>
-      <CronJobsBlock />
       <TokenCard />
       <RateLimitCard />
       <ServiceGrid services={services} initialHealth={health} />

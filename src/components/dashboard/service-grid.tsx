@@ -6,6 +6,7 @@ import { categories } from "@/config/categories-data"
 import { ServiceCard } from "./service-card"
 import { SearchBar } from "./search-bar"
 import { StatusSummary } from "./status-summary"
+import { CronJobsBlock } from "./cron-jobs-block"
 import { useServiceFilter } from "@/hooks/use-service-filter"
 import { useNetworkMode } from "@/hooks/use-network-mode"
 import { useHealthPolling } from "@/hooks/use-health-polling"
@@ -53,9 +54,12 @@ export function ServiceGrid({ services, initialHealth }: ServiceGridProps) {
 
   return (
     <div className="space-y-8">
-      {/* Live status summary */}
-      <div>
+      {/* Live status summary + 宿主机定时任务 */}
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start">
         <StatusSummary results={health} />
+        <div className="min-w-0 flex-1">
+          <CronJobsBlock />
+        </div>
       </div>
 
       {/* Search bar + edit toggle */}

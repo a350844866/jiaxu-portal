@@ -164,11 +164,11 @@ export function CronJobsBlock() {
       : `${enabledCount} 个`
 
   return (
-    <section className="mt-3 rounded-lg border border-zinc-800/80 bg-zinc-950/40 ring-1 ring-foreground/10">
+    <section className="rounded-lg border border-zinc-800 bg-zinc-900/40">
       <button
         type="button"
         onClick={toggle}
-        className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-zinc-900/40"
+        className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-zinc-900/70"
         aria-expanded={expanded}
       >
         <div className="flex items-center gap-3">
