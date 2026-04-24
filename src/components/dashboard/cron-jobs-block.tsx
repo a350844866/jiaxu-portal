@@ -14,6 +14,8 @@ type CronJob = {
   enabled: boolean
 }
 
+type AggregatedJob = CronJob & { count: number }
+
 type Snapshot = {
   generated_at: string | null
   age_seconds: number | null
@@ -153,8 +155,25 @@ export function CronJobsBlock() {
     })
   }, [snap])
 
-  const enabledCount = sortedJobs.filter((j) => j.enabled).length
-  const disabledCount = sortedJobs.length - enabledCount
+  // Aggregate stagger siblings (same source/schedule/stripped-command into one row).
+  // Preserves sortedJobs ordering because the first hit wins and later hits just bump count.
+  const aggregatedJobs = useMemo<AggregatedJob[]>(() => {
+    const groups = new Map<string, AggregatedJob>()
+    for (const job of sortedJobs) {
+      const key = `${job.source}|${job.schedule_raw}|${shortCommand(job.command)}|${job.enabled}`
+      const existing = groups.get(key)
+      if (existing) {
+        existing.count += 1
+        if (job.name.length > existing.name.length) existing.name = job.name
+      } else {
+        groups.set(key, { ...job, count: 1 })
+      }
+    }
+    return [...groups.values()]
+  }, [sortedJobs])
+
+  const enabledCount = aggregatedJobs.filter((j) => j.enabled).length
+  const disabledCount = aggregatedJobs.length - enabledCount
 
   const counter =
     snap === null
@@ -214,7 +233,7 @@ export function CronJobsBlock() {
                 </div>
               )}
               <ul className="divide-y divide-zinc-900/60">
-                {sortedJobs.map((job) => {
+                {aggregatedJobs.map((job) => {
                   const human = describeSchedule(job.schedule_raw)
                   const cmd = shortCommand(job.command)
                   return (
@@ -236,12 +255,20 @@ export function CronJobsBlock() {
                       />
                       <span
                         className={cn(
-                          "truncate text-[12.5px] text-zinc-200",
+                          "flex min-w-0 items-center gap-1.5 text-[12.5px] text-zinc-200",
                           !job.enabled && "line-through"
                         )}
                         title={job.name}
                       >
-                        {job.name}
+                        <span className="truncate">{job.name}</span>
+                        {job.count > 1 && (
+                          <span
+                            className="shrink-0 rounded-sm border border-zinc-700 bg-zinc-800/70 px-1 font-mono text-[10px] tabular-nums text-zinc-400"
+                            title={`${job.count} 条 stagger 条目合并`}
+                          >
+                            ×{job.count}
+                          </span>
+                        )}
                       </span>
                       <span
                         className="truncate font-mono text-[11px] tabular-nums text-amber-300/90"
@@ -258,7 +285,7 @@ export function CronJobsBlock() {
                     </li>
                   )
                 })}
-                {sortedJobs.length === 0 && !err && (
+                {aggregatedJobs.length === 0 && !err && (
                   <li className="px-2 py-3 text-center font-mono text-[11px] text-zinc-600">
                     {snap === null ? "加载中…" : "(无任务)"}
                   </li>
