@@ -17,9 +17,21 @@ services:
       - NACOS_PROXY_SECRET=${NACOS_PROXY_SECRET}
       - PROXIED_HOSTS=${PROXIED_HOSTS}
       - PORTAL_ORIGIN=${PORTAL_ORIGIN}
+      - USAGE_DB_HOST=${USAGE_DB_HOST}
+      - USAGE_DB_PORT=${USAGE_DB_PORT}
+      - USAGE_DB_USER=${USAGE_DB_USER}
+      - USAGE_DB_PASS=${USAGE_DB_PASS}
+      - USAGE_DB_NAME=${USAGE_DB_NAME}
+      - CODEX_DB_PATH=/data/codex-home/state_5.sqlite
+      - CODEX_SESSIONS_PATH=/data/codex-home/sessions
+      - QUANT_FLOW_LLM_CALLS_PATH=/data/quant-flow-llm-calls
+      - PORTAL_STATE_DIR=/data/portal-state
     volumes:
       - ./data/surge-rules:/data/surge-rules
       - ./data/auth:/data/auth
+      - /home/jiaxu/.codex:/data/codex-home:ro
+      - /programHost/vibe-coding/quant-flow/logs/llm_calls:/data/quant-flow-llm-calls:ro
+      - /data/portal-state:/data/portal-state:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
