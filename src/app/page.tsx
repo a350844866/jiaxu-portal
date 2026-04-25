@@ -5,6 +5,7 @@ import { ServiceGrid } from "@/components/dashboard/service-grid"
 import { TokenCard } from "@/components/dashboard/token-card"
 import { RateLimitCard } from "@/components/dashboard/rate-limit-card"
 import { ResourceRail } from "@/components/dashboard/resource-rail"
+import { TodoCard } from "@/components/dashboard/todo-card"
 
 export const revalidate = 30
 
@@ -19,6 +20,7 @@ export default async function Home() {
       </div>
       <TokenCard />
       <RateLimitCard />
+      <TodoCard />
       <ServiceGrid services={services} initialHealth={health} />
       <footer className="mt-12 text-center text-xs text-zinc-600">
         jiaxu-server-home

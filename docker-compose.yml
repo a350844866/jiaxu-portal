@@ -26,12 +26,15 @@ services:
       - CODEX_SESSIONS_PATH=/data/codex-home/sessions
       - QUANT_FLOW_LLM_CALLS_PATH=/data/quant-flow-llm-calls
       - PORTAL_STATE_DIR=/data/portal-state
+      - VAULT_DIR=/data/vault
     volumes:
       - ./data/surge-rules:/data/surge-rules
       - ./data/auth:/data/auth
       - /home/jiaxu/.codex:/data/codex-home:ro
       - /programHost/vibe-coding/quant-flow/logs/llm_calls:/data/quant-flow-llm-calls:ro
       - /data/portal-state:/data/portal-state:ro
+      # vault mount for TodoCard — reads TODO.md (potentially other top-level files later)
+      - /programHost/obsidian/jiaxu:/data/vault:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
