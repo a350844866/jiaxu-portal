@@ -3,10 +3,12 @@
  *
  * Server component: reads /data/vault/TODO.md at request time (page is
  * `revalidate = 30`, so the latest content shows within 30s of a vault edit).
- * Items are grouped by system tag; bucket (short/mid/long) shown as a chip.
+ * Items are grouped by system tag; bucket (short/mid) shown as a chip.
  *
- * "Done" items are dropped from the card to keep noise low — the vault file
- * keeps them for a month per CLAUDE §13.4.
+ * "Done" + "long/Phase 5" items are dropped from the card to keep noise low —
+ * homepage only surfaces actionable / near-term work. Phase 5 long-term items
+ * live in vault/TODO.md "## 长期 / Phase 5 留扩展点" section; read directly
+ * when planning roadmap.
  */
 import {
   readTodoSnapshot,
@@ -57,8 +59,12 @@ export async function TodoCard() {
     )
   }
 
-  // Drop done items from the card display (keep file for archival)
-  const open = snap.items.filter((i) => !i.done && i.bucket !== "done")
+  // Drop done + long(Phase 5) items from the card display.
+  // - done: kept in file for 1 month archival per CLAUDE §13.4
+  // - long: Phase 5 远期项,首页不该浮上来当噪声;在 TODO.md 文件内可直接读
+  const open = snap.items.filter(
+    (i) => !i.done && i.bucket !== "done" && i.bucket !== "long",
+  )
   const grouped = groupBySystem(open)
 
   // Sort systems by predefined order then alpha
