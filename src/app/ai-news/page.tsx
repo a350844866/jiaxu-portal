@@ -1,7 +1,12 @@
 import Link from "next/link"
 import { Newspaper, ArrowLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { readRecent, companyMeta, type AINewsEvent } from "@/lib/ai-news-reader"
+import {
+  readRecent,
+  companyMeta,
+  primaryEventId,
+  type AINewsEvent,
+} from "@/lib/ai-news-reader"
 
 export const revalidate = 60
 export const dynamic = "force-dynamic"
@@ -74,6 +79,7 @@ function EventRow({ ev }: { ev: AINewsEvent }) {
   const meta = companyMeta(ev.company)
   const title = ev.title_zh || ev.title
   const url = ev.urls?.[0]
+  const eventId = primaryEventId(ev)
   const inner = (
     <div className="flex items-start gap-2">
       {scoreBadge(ev.importance_score)}
@@ -96,6 +102,18 @@ function EventRow({ ev }: { ev: AINewsEvent }) {
       </div>
     </div>
   )
+  if (eventId !== null) {
+    return (
+      <li>
+        <Link
+          href={`/ai-news/${eventId}`}
+          className="block rounded-lg border border-transparent p-2 hover:border-zinc-700 hover:bg-zinc-900/40"
+        >
+          {inner}
+        </Link>
+      </li>
+    )
+  }
   if (url) {
     return (
       <li>

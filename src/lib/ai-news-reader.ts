@@ -14,6 +14,9 @@ export type AINewsCategory =
 
 export interface AINewsEvent {
   cluster_id?: string
+  cluster_key?: string | null
+  event_ids?: number[]
+  source_event_ids?: number[]
   company: AINewsCompany
   category: AINewsCategory
   title: string
@@ -21,7 +24,11 @@ export interface AINewsEvent {
   summary?: string
   summary_zh?: string
   importance_score: number
-  importance_reason?: string
+  importance_reason?: string | null
+  background_zh?: string | null
+  background_generated_at?: string | null
+  hn_comments_summary_zh?: string | null
+  hn_comments_generated_at?: string | null
   urls: string[]
   published_at?: string
   sources?: string[]
@@ -48,6 +55,20 @@ export interface AINewsRecent {
   ok: boolean
   error?: string
   digests: AINewsDigest[]
+}
+
+export interface AINewsRelatedEvent {
+  id: number
+  title_zh?: string
+  title: string
+  company: AINewsCompany
+  published_at?: string
+  importance_score: number
+}
+
+export interface AINewsEventDetail {
+  event: AINewsEvent
+  related_events: AINewsRelatedEvent[]
 }
 
 const DIGESTS_DIR = process.env.AI_NEWS_DIGESTS_DIR || "/data/ai-news/digests"
@@ -130,6 +151,99 @@ export async function readRecent(days: number = 30): Promise<AINewsRecent> {
       error: code === "ENOENT" ? "digests 目录尚未生成" : String(e),
     }
   }
+}
+
+async function readAllDigests(): Promise<AINewsDigest[]> {
+  const entries = await fs.readdir(DIGESTS_DIR)
+  const jsonFiles = entries
+    .filter((f) => f === "today.json" || /^\d{4}-\d{2}-\d{2}\.json$/.test(f))
+    .sort((a, b) => {
+      if (a === "today.json") return -1
+      if (b === "today.json") return 1
+      return b.localeCompare(a)
+    })
+
+  const digests: AINewsDigest[] = []
+  for (const f of jsonFiles) {
+    try {
+      const raw = await fs.readFile(path.join(DIGESTS_DIR, f), "utf8")
+      digests.push(JSON.parse(raw) as AINewsDigest)
+    } catch {
+      // skip unreadable
+    }
+  }
+  return digests
+}
+
+function eventIds(ev: AINewsEvent): number[] {
+  // Union of event_ids + source_event_ids (cluster members) — both fields
+  // can carry the original event id depending on which step in the digest
+  // pipeline emitted them, so look up against both for resilience.
+  const ids = [...(ev.event_ids ?? []), ...(ev.source_event_ids ?? [])]
+  const seen = new Set<number>()
+  const out: number[] = []
+  for (const id of ids) {
+    if (!Number.isFinite(id)) continue
+    if (seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
+}
+
+export function primaryEventId(ev: AINewsEvent): number | null {
+  return eventIds(ev)[0] ?? null
+}
+
+export async function readEventById(id: number): Promise<AINewsEventDetail | null> {
+  if (!Number.isFinite(id)) return null
+
+  let digests: AINewsDigest[]
+  try {
+    digests = await readAllDigests()
+  } catch {
+    return null
+  }
+
+  let event: AINewsEvent | null = null
+  for (const digest of digests) {
+    const found = digest.events.find((ev) => eventIds(ev).includes(id))
+    if (found) {
+      event = found
+      break
+    }
+  }
+
+  if (!event) return null
+
+  const related: AINewsRelatedEvent[] = []
+  const clusterKey = event.cluster_key
+  if (clusterKey) {
+    const seen = new Set<number>([id])
+    for (const digest of digests) {
+      for (const ev of digest.events) {
+        if (ev.cluster_key !== clusterKey) continue
+        const relatedId = primaryEventId(ev)
+        if (relatedId === null || seen.has(relatedId)) continue
+        seen.add(relatedId)
+        related.push({
+          id: relatedId,
+          title_zh: ev.title_zh,
+          title: ev.title,
+          company: ev.company,
+          published_at: ev.published_at,
+          importance_score: ev.importance_score,
+        })
+      }
+    }
+    related.sort((a, b) => {
+      const at = a.published_at ? new Date(a.published_at).getTime() : 0
+      const bt = b.published_at ? new Date(b.published_at).getTime() : 0
+      return bt - at
+    })
+  }
+
+  return { event, related_events: related.slice(0, 5) }
 }
 
 export function groupByCompany(events: AINewsEvent[]): Map<AINewsCompany, AINewsEvent[]> {

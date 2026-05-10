@@ -6,6 +6,7 @@ import {
   groupByCompany,
   companyMeta,
   companyOrder,
+  primaryEventId,
   type AINewsEvent,
 } from "@/lib/ai-news-reader"
 
@@ -126,39 +127,64 @@ function EventRow({ ev }: { ev: AINewsEvent }) {
   const title = ev.title_zh || ev.title
   const url = ev.urls?.[0]
   const date = fmtDate(ev.published_at)
-  const Wrapper: React.FC<{ children: React.ReactNode }> = url
-    ? ({ children }) => (
-        <a href={url} target="_blank" rel="noopener noreferrer" className="block hover:opacity-90">
-          {children}
-        </a>
-      )
-    : ({ children }) => <div>{children}</div>
+  const eventId = primaryEventId(ev)
+  const titleClassName = "text-zinc-100 hover:text-zinc-50 hover:underline"
   return (
     <li className="leading-relaxed">
-      <Wrapper>
-        <div className="flex items-start gap-1.5">
-          {scoreBadge(ev.importance_score)}
-          <div className="min-w-0">
+      <div className="flex items-start gap-1.5">
+        {scoreBadge(ev.importance_score)}
+        <div className="min-w-0 flex-1">
+          {eventId !== null ? (
+            <Link href={`/ai-news/${eventId}`} className={titleClassName}>
+              {title}
+            </Link>
+          ) : url ? (
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={titleClassName}
+            >
+              {title}
+            </a>
+          ) : (
             <span className="text-zinc-100">{title}</span>
-            {(date || ev.is_first_seen_only) && (
-              <span className="ml-1.5 inline-flex items-center gap-1 text-[10px] text-zinc-500">
-                {ev.is_first_seen_only ? (
-                  <span title="HTML diff 源：published_at 是首次抓到时间，不是真实发布日">
-                    {date ? `首见 ${date}` : "首见"}
-                  </span>
-                ) : (
-                  <span>{date}</span>
-                )}
-              </span>
-            )}
-            {ev.summary_zh && (
-              <p className="mt-0.5 text-[11px] leading-snug text-zinc-400 line-clamp-2">
-                {ev.summary_zh}
-              </p>
-            )}
-          </div>
+          )}
+          {(date || ev.is_first_seen_only) && (
+            <span className="ml-1.5 inline-flex items-center gap-1 text-[10px] text-zinc-500">
+              {ev.is_first_seen_only ? (
+                <span title="HTML diff 源：published_at 是首次抓到时间，不是真实发布日">
+                  {date ? `首见 ${date}` : "首见"}
+                </span>
+              ) : (
+                <span>{date}</span>
+              )}
+            </span>
+          )}
+          {ev.summary_zh && (
+            <p className="mt-0.5 text-[11px] leading-snug text-zinc-400 line-clamp-2">
+              {ev.summary_zh}
+            </p>
+          )}
+          {ev.importance_reason && (
+            <p className="mt-0.5 text-[11px] leading-snug text-zinc-500 line-clamp-1">
+              💡 {ev.importance_reason}
+            </p>
+          )}
         </div>
-      </Wrapper>
+        {url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-0.5 shrink-0 text-[11px] text-zinc-500 hover:text-zinc-300"
+            aria-label="打开原始链接"
+            title="打开原始链接"
+          >
+            ↗
+          </a>
+        )}
+      </div>
     </li>
   )
 }
