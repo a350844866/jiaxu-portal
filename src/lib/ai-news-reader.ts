@@ -24,6 +24,9 @@ export interface AINewsEvent {
   importance_reason?: string
   urls: string[]
   published_at?: string
+  sources?: string[]
+  /** True when all sources are HTML-diff (published_at = first-seen, not actual article date). */
+  is_first_seen_only?: boolean
 }
 
 export interface AINewsDigest {

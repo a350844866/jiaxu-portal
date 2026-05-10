@@ -110,9 +110,22 @@ export async function AINewsCard() {
   )
 }
 
+function fmtDate(iso?: string): string | null {
+  if (!iso) return null
+  try {
+    const d = new Date(iso)
+    const m = String(d.getMonth() + 1).padStart(2, "0")
+    const day = String(d.getDate()).padStart(2, "0")
+    return `${m}-${day}`
+  } catch {
+    return null
+  }
+}
+
 function EventRow({ ev }: { ev: AINewsEvent }) {
   const title = ev.title_zh || ev.title
   const url = ev.urls?.[0]
+  const date = fmtDate(ev.published_at)
   const Wrapper: React.FC<{ children: React.ReactNode }> = url
     ? ({ children }) => (
         <a href={url} target="_blank" rel="noopener noreferrer" className="block hover:opacity-90">
@@ -127,6 +140,17 @@ function EventRow({ ev }: { ev: AINewsEvent }) {
           {scoreBadge(ev.importance_score)}
           <div className="min-w-0">
             <span className="text-zinc-100">{title}</span>
+            {(date || ev.is_first_seen_only) && (
+              <span className="ml-1.5 inline-flex items-center gap-1 text-[10px] text-zinc-500">
+                {ev.is_first_seen_only ? (
+                  <span title="HTML diff 源：published_at 是首次抓到时间，不是真实发布日">
+                    {date ? `首见 ${date}` : "首见"}
+                  </span>
+                ) : (
+                  <span>{date}</span>
+                )}
+              </span>
+            )}
             {ev.summary_zh && (
               <p className="mt-0.5 text-[11px] leading-snug text-zinc-400 line-clamp-2">
                 {ev.summary_zh}
