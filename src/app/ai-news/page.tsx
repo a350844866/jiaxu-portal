@@ -2,29 +2,18 @@ import Link from "next/link"
 import { Newspaper, ArrowLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
-  readRecent,
-  companyMeta,
-  primaryEventId,
-  type AINewsEvent,
+  readToday,
+  readDailies,
+  orderSections,
+  sectionMeta,
+  totalItems,
 } from "@/lib/ai-news-reader"
 
-export const revalidate = 60
+export const revalidate = 600
 export const dynamic = "force-dynamic"
 
-function scoreBadge(score: number) {
-  let tone = "bg-zinc-700/60 text-zinc-300"
-  if (score >= 13) tone = "bg-rose-500/30 text-rose-100"
-  else if (score >= 10) tone = "bg-amber-500/25 text-amber-100"
-  else if (score >= 7) tone = "bg-emerald-500/20 text-emerald-200"
-  return (
-    <span className={cn("shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] tabular-nums", tone)}>
-      ⭐{score}
-    </span>
-  )
-}
-
-export default async function AINewsHistoryPage() {
-  const data = await readRecent(30)
+export default async function AINewsPage() {
+  const [today, dailies] = await Promise.all([readToday(), readDailies(30)])
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-6">
@@ -36,97 +25,120 @@ export default async function AINewsHistoryPage() {
           <ArrowLeft className="h-4 w-4" /> 返回
         </Link>
         <h1 className="flex items-center gap-2 text-base font-medium text-zinc-200">
-          <Newspaper className="h-4 w-4" /> AI News 历史 (近 30 天)
+          <Newspaper className="h-4 w-4" /> AI 早报
         </h1>
-        <span className="w-12" />
+        <a
+          href="https://aihot.virxact.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-zinc-500 hover:text-zinc-300"
+        >
+          aihot ↗
+        </a>
       </div>
 
-      {!data.ok && (
+      {today.ok && today.daily && (
+        <DailyBlock daily={today.daily} highlight />
+      )}
+
+      {dailies.ok && dailies.items.length > 1 && (
+        <section className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950/40 p-4">
+          <h2 className="text-sm font-medium text-zinc-200">近 30 天日报索引</h2>
+          <ul className="mt-3 space-y-1.5 text-sm">
+            {dailies.items
+              .filter((d) => d.date !== today.daily?.date)
+              .map((d) => (
+                <li key={d.date}>
+                  <a
+                    href={`https://aihot.virxact.com/d/${d.date}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 rounded p-1.5 hover:bg-zinc-900/40"
+                  >
+                    <span className="font-mono text-xs text-zinc-500">{d.date}</span>
+                    <span className="flex-1 truncate text-zinc-200">
+                      {d.leadTitle || "(无 lead title)"}
+                    </span>
+                    <span className="text-[10px] text-zinc-600">aihot ↗</span>
+                  </a>
+                </li>
+              ))}
+          </ul>
+        </section>
+      )}
+
+      {!today.ok && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4 text-sm text-rose-400">
-          {data.error}
+          {today.error}
         </div>
       )}
-
-      {data.ok && data.digests.length === 0 && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4 text-sm text-zinc-500">
-          暂无 digest。
-        </div>
-      )}
-
-      <div className="space-y-6">
-        {data.digests.map((d) => (
-          <section key={d.date} className="rounded-2xl border border-zinc-800 bg-zinc-950/40 p-4">
-            <header className="mb-3 flex items-center justify-between">
-              <h2 className="font-mono text-sm font-medium text-zinc-200">{d.date}</h2>
-              <span className="text-xs text-zinc-500">{d.total_count} 条</span>
-            </header>
-            <ul className="space-y-2">
-              {d.events
-                .slice()
-                .sort((a, b) => b.importance_score - a.importance_score)
-                .map((ev, idx) => (
-                  <EventRow key={idx} ev={ev} />
-                ))}
-            </ul>
-          </section>
-        ))}
-      </div>
     </main>
   )
 }
 
-function EventRow({ ev }: { ev: AINewsEvent }) {
-  const meta = companyMeta(ev.company)
-  const title = ev.title_zh || ev.title
-  const url = ev.urls?.[0]
-  const eventId = primaryEventId(ev)
-  const inner = (
-    <div className="flex items-start gap-2">
-      {scoreBadge(ev.importance_score)}
-      <span
-        className={cn(
-          "shrink-0 rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide",
-          meta.tone,
-        )}
-      >
-        {meta.emoji} {meta.label}
-      </span>
-      <span className="shrink-0 rounded bg-zinc-800/60 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-300">
-        {ev.category}
-      </span>
-      <div className="min-w-0">
-        <div className="text-sm text-zinc-100">{title}</div>
-        {ev.summary_zh && (
-          <p className="mt-1 text-xs leading-relaxed text-zinc-400">{ev.summary_zh}</p>
-        )}
+function DailyBlock({
+  daily,
+  highlight = false,
+}: {
+  daily: NonNullable<Awaited<ReturnType<typeof readToday>>["daily"]>
+  highlight?: boolean
+}) {
+  const sections = orderSections(daily.sections).filter((s) => s.items.length > 0)
+  const total = totalItems(daily)
+
+  return (
+    <section
+      className={cn(
+        "rounded-2xl border bg-zinc-950/40 p-4",
+        highlight ? "border-zinc-700" : "border-zinc-800",
+      )}
+    >
+      <header className="mb-3 flex items-center justify-between">
+        <h2 className="font-mono text-sm font-medium text-zinc-200">{daily.date}</h2>
+        <span className="text-xs text-zinc-500">{total} 条</span>
+      </header>
+      <div className="space-y-4">
+        {sections.map((sec) => {
+          const meta = sectionMeta(sec.label)
+          return (
+            <div key={sec.label}>
+              <div className="mb-2 flex items-center gap-2">
+                <span
+                  className={cn(
+                    "rounded border px-1.5 py-0.5 text-[11px] font-medium",
+                    meta.tone,
+                  )}
+                >
+                  {meta.emoji} {sec.label}
+                </span>
+                <span className="text-[10px] text-zinc-500">{sec.items.length} 条</span>
+              </div>
+              <ul className="space-y-2 pl-2">
+                {sec.items.map((it, idx) => (
+                  <li key={idx} className="text-sm">
+                    <a
+                      href={it.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-zinc-100 hover:underline"
+                    >
+                      {it.title}
+                    </a>
+                    {it.sourceName && (
+                      <span className="ml-1.5 text-[11px] text-zinc-500">· {it.sourceName}</span>
+                    )}
+                    {it.summary && (
+                      <p className="mt-0.5 text-xs leading-relaxed text-zinc-400">
+                        {it.summary}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )
+        })}
       </div>
-    </div>
+    </section>
   )
-  if (eventId !== null) {
-    return (
-      <li>
-        <Link
-          href={`/ai-news/${eventId}`}
-          className="block rounded-lg border border-transparent p-2 hover:border-zinc-700 hover:bg-zinc-900/40"
-        >
-          {inner}
-        </Link>
-      </li>
-    )
-  }
-  if (url) {
-    return (
-      <li>
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block rounded-lg border border-transparent p-2 hover:border-zinc-700 hover:bg-zinc-900/40"
-        >
-          {inner}
-        </a>
-      </li>
-    )
-  }
-  return <li className="p-2">{inner}</li>
 }

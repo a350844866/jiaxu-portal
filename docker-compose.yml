@@ -27,7 +27,6 @@ services:
       - QUANT_FLOW_LLM_CALLS_PATH=/data/quant-flow-llm-calls
       - PORTAL_STATE_DIR=/data/portal-state
       - VAULT_DIR=/data/vault
-      - AI_NEWS_DIGESTS_DIR=/data/ai-news/digests
       - WIFE_OBSERVER_API_TOKEN=${WIFE_OBSERVER_API_TOKEN}
       - WIFE_OBSERVER_BACKEND_URL=${WIFE_OBSERVER_BACKEND_URL}
     volumes:
@@ -38,8 +37,6 @@ services:
       - /data/portal-state:/data/portal-state:ro
       # vault mount for TodoCard — reads TODO.md (potentially other top-level files later)
       - /programHost/obsidian/jiaxu:/data/vault:ro
-      # ai-news daily digest — read by AINewsCard + /ai-news page
-      - /data/ai-news-corpus/digests:/data/ai-news/digests:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

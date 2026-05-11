@@ -1,260 +1,116 @@
-import { promises as fs } from "node:fs"
-import path from "node:path"
+// AI 早报数据源 = aihot.virxact.com 公开 API (by 数字生命卡兹克)
+// 自建 ai-news-corpus 于 2026-05-11 替换为本接入,JSON 文件读取改为远端 fetch.
 
-export type AINewsCompany =
-  | "anthropic" | "openai" | "google" | "xai"
-  | "meta" | "microsoft" | "apple" | "cohere" | "mistral"
-  | "deepseek" | "qwen" | "zhipu" | "doubao" | "minimax"
-  | "general"
+const AIHOT_BASE = "https://aihot.virxact.com"
+const AIHOT_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
-export type AINewsCategory =
-  | "product" | "model_release" | "api" | "research" | "paper"
-  | "funding" | "people" | "infra" | "security" | "outage"
-  | "pricing" | "controversy" | "policy" | "community"
-
-export interface AINewsEvent {
-  cluster_id?: string
-  cluster_key?: string | null
-  event_ids?: number[]
-  source_event_ids?: number[]
-  company: AINewsCompany
-  category: AINewsCategory
+export interface AihotItem {
   title: string
-  title_zh?: string
-  summary?: string
-  summary_zh?: string
-  importance_score: number
-  importance_reason?: string | null
-  background_zh?: string | null
-  background_generated_at?: string | null
-  hn_comments_summary_zh?: string | null
-  hn_comments_generated_at?: string | null
-  urls: string[]
-  published_at?: string
-  sources?: string[]
-  /** True when all sources are HTML-diff (published_at = first-seen, not actual article date). */
-  is_first_seen_only?: boolean
+  summary: string | null
+  sourceUrl: string
+  sourceName: string
 }
 
-export interface AINewsDigest {
+export interface AihotSection {
+  label: string
+  items: AihotItem[]
+}
+
+export interface AihotDaily {
   date: string
-  generated_at: string
-  events: AINewsEvent[]
-  total_count: number
-  by_company: Partial<Record<AINewsCompany, number>>
+  generatedAt: string
+  windowStart?: string
+  windowEnd?: string
+  lead: { title?: string; paragraph?: string } | null
+  sections: AihotSection[]
 }
 
-export interface AINewsSnapshot {
+export interface AihotDailyIndex {
+  date: string
+  generatedAt: string
+  leadTitle: string | null
+  leadParagraph: string | null
+}
+
+export interface AihotDailySnapshot {
   ok: boolean
   error?: string
   ageSeconds: number | null
-  digest: AINewsDigest | null
+  daily: AihotDaily | null
 }
 
-export interface AINewsRecent {
+export interface AihotDailiesList {
   ok: boolean
   error?: string
-  digests: AINewsDigest[]
+  items: AihotDailyIndex[]
 }
 
-export interface AINewsRelatedEvent {
-  id: number
-  title_zh?: string
-  title: string
-  company: AINewsCompany
-  published_at?: string
-  importance_score: number
+const SECTION_META: Record<string, { emoji: string; tone: string }> = {
+  "模型发布/更新": { emoji: "🧠", tone: "border-violet-500/30 bg-violet-500/5 text-violet-100" },
+  "产品发布/更新": { emoji: "🚀", tone: "border-emerald-500/30 bg-emerald-500/5 text-emerald-100" },
+  "行业动态":       { emoji: "🏭", tone: "border-amber-500/30 bg-amber-500/5 text-amber-100" },
+  "论文":           { emoji: "📄", tone: "border-sky-500/30 bg-sky-500/5 text-sky-100" },
+  "技巧与观点":     { emoji: "💡", tone: "border-zinc-400/30 bg-zinc-500/5 text-zinc-100" },
 }
 
-export interface AINewsEventDetail {
-  event: AINewsEvent
-  related_events: AINewsRelatedEvent[]
+const SECTION_ORDER = ["模型发布/更新", "产品发布/更新", "行业动态", "论文", "技巧与观点"]
+
+export function sectionMeta(label: string) {
+  return SECTION_META[label] ?? { emoji: "🔹", tone: "border-zinc-500/30 bg-zinc-500/5 text-zinc-300" }
 }
 
-const DIGESTS_DIR = process.env.AI_NEWS_DIGESTS_DIR || "/data/ai-news/digests"
-
-const COMPANY_LABELS: Record<AINewsCompany, { label: string; emoji: string; tone: string }> = {
-  anthropic:  { label: "Anthropic",  emoji: "🟧", tone: "border-orange-500/30 bg-orange-500/5 text-orange-100" },
-  openai:     { label: "OpenAI",     emoji: "⚫", tone: "border-zinc-400/30 bg-zinc-500/5 text-zinc-100" },
-  google:     { label: "Google AI",  emoji: "🔵", tone: "border-blue-500/30 bg-blue-500/5 text-blue-100" },
-  xai:        { label: "xAI",        emoji: "⚡", tone: "border-violet-500/30 bg-violet-500/5 text-violet-100" },
-  meta:       { label: "Meta AI",    emoji: "🔷", tone: "border-sky-500/30 bg-sky-500/5 text-sky-100" },
-  microsoft:  { label: "Microsoft",  emoji: "🟦", tone: "border-cyan-500/30 bg-cyan-500/5 text-cyan-100" },
-  apple:      { label: "Apple",      emoji: "🍎", tone: "border-zinc-300/30 bg-zinc-300/5 text-zinc-100" },
-  cohere:     { label: "Cohere",     emoji: "🟪", tone: "border-fuchsia-500/30 bg-fuchsia-500/5 text-fuchsia-100" },
-  mistral:    { label: "Mistral",    emoji: "🟥", tone: "border-rose-500/30 bg-rose-500/5 text-rose-100" },
-  deepseek:   { label: "DeepSeek",   emoji: "🟦", tone: "border-indigo-500/30 bg-indigo-500/5 text-indigo-100" },
-  qwen:       { label: "通义千问",   emoji: "🟫", tone: "border-amber-500/30 bg-amber-500/5 text-amber-100" },
-  zhipu:      { label: "智谱",       emoji: "🟦", tone: "border-teal-500/30 bg-teal-500/5 text-teal-100" },
-  doubao:     { label: "豆包",       emoji: "🫘", tone: "border-yellow-500/30 bg-yellow-500/5 text-yellow-100" },
-  minimax:    { label: "MiniMax",    emoji: "🔻", tone: "border-pink-500/30 bg-pink-500/5 text-pink-100" },
-  general:    { label: "聚合/其它",  emoji: "🌐", tone: "border-zinc-500/30 bg-zinc-500/5 text-zinc-300" },
+export function orderSections(sections: AihotSection[]): AihotSection[] {
+  const idx = (label: string) => {
+    const i = SECTION_ORDER.indexOf(label)
+    return i === -1 ? 999 : i
+  }
+  return [...sections].sort((a, b) => idx(a.label) - idx(b.label))
 }
 
-const COMPANY_ORDER: AINewsCompany[] = [
-  "anthropic", "openai", "google", "xai",
-  "meta", "microsoft", "apple", "cohere", "mistral",
-  "deepseek", "qwen", "zhipu", "doubao", "minimax",
-  "general",
-]
-
-export function companyMeta(c: AINewsCompany) {
-  return COMPANY_LABELS[c] ?? COMPANY_LABELS.general
+async function fetchJson<T>(url: string): Promise<T> {
+  const resp = await fetch(url, {
+    headers: { "User-Agent": AIHOT_UA, Accept: "application/json" },
+    next: { revalidate: 600 },
+  })
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  return (await resp.json()) as T
 }
 
-export function companyOrder(): AINewsCompany[] {
-  return COMPANY_ORDER
-}
-
-export async function readToday(): Promise<AINewsSnapshot> {
-  const file = path.join(DIGESTS_DIR, "today.json")
+export async function readToday(): Promise<AihotDailySnapshot> {
   try {
-    const stat = await fs.stat(file)
-    const raw = await fs.readFile(file, "utf8")
-    const digest = JSON.parse(raw) as AINewsDigest
-    const ageMs = Date.now() - stat.mtimeMs
-    return { ok: true, ageSeconds: Math.round(ageMs / 1000), digest }
+    const daily = await fetchJson<AihotDaily>(`${AIHOT_BASE}/api/public/daily`)
+    const ageMs = Date.now() - new Date(daily.generatedAt).getTime()
+    return { ok: true, ageSeconds: Math.max(0, Math.round(ageMs / 1000)), daily }
   } catch (e) {
-    const code = (e as NodeJS.ErrnoException).code
-    return {
-      ok: false,
-      ageSeconds: null,
-      digest: null,
-      error: code === "ENOENT" ? "今日 digest 尚未生成" : String(e),
-    }
+    return { ok: false, ageSeconds: null, daily: null, error: String(e) }
   }
 }
 
-export async function readRecent(days: number = 30): Promise<AINewsRecent> {
+export async function readByDate(date: string): Promise<AihotDailySnapshot> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return { ok: false, ageSeconds: null, daily: null, error: "invalid date format" }
+  }
   try {
-    const entries = await fs.readdir(DIGESTS_DIR)
-    const datedFiles = entries
-      .filter((f) => /^\d{4}-\d{2}-\d{2}\.json$/.test(f))
-      .sort()
-      .reverse()
-      .slice(0, days)
-    const digests: AINewsDigest[] = []
-    for (const f of datedFiles) {
-      try {
-        const raw = await fs.readFile(path.join(DIGESTS_DIR, f), "utf8")
-        digests.push(JSON.parse(raw) as AINewsDigest)
-      } catch {
-        // skip unreadable
-      }
-    }
-    return { ok: true, digests }
+    const daily = await fetchJson<AihotDaily>(`${AIHOT_BASE}/api/public/daily/${date}`)
+    const ageMs = Date.now() - new Date(daily.generatedAt).getTime()
+    return { ok: true, ageSeconds: Math.max(0, Math.round(ageMs / 1000)), daily }
   } catch (e) {
-    const code = (e as NodeJS.ErrnoException).code
-    return {
-      ok: false,
-      digests: [],
-      error: code === "ENOENT" ? "digests 目录尚未生成" : String(e),
-    }
+    return { ok: false, ageSeconds: null, daily: null, error: String(e) }
   }
 }
 
-async function readAllDigests(): Promise<AINewsDigest[]> {
-  const entries = await fs.readdir(DIGESTS_DIR)
-  const jsonFiles = entries
-    .filter((f) => f === "today.json" || /^\d{4}-\d{2}-\d{2}\.json$/.test(f))
-    .sort((a, b) => {
-      if (a === "today.json") return -1
-      if (b === "today.json") return 1
-      return b.localeCompare(a)
-    })
-
-  const digests: AINewsDigest[] = []
-  for (const f of jsonFiles) {
-    try {
-      const raw = await fs.readFile(path.join(DIGESTS_DIR, f), "utf8")
-      digests.push(JSON.parse(raw) as AINewsDigest)
-    } catch {
-      // skip unreadable
-    }
-  }
-  return digests
-}
-
-function eventIds(ev: AINewsEvent): number[] {
-  // Union of event_ids + source_event_ids (cluster members) — both fields
-  // can carry the original event id depending on which step in the digest
-  // pipeline emitted them, so look up against both for resilience.
-  const ids = [...(ev.event_ids ?? []), ...(ev.source_event_ids ?? [])]
-  const seen = new Set<number>()
-  const out: number[] = []
-  for (const id of ids) {
-    if (!Number.isFinite(id)) continue
-    if (seen.has(id)) continue
-    seen.add(id)
-    out.push(id)
-  }
-  return out
-}
-
-export function primaryEventId(ev: AINewsEvent): number | null {
-  return eventIds(ev)[0] ?? null
-}
-
-export async function readEventById(id: number): Promise<AINewsEventDetail | null> {
-  if (!Number.isFinite(id)) return null
-
-  let digests: AINewsDigest[]
+export async function readDailies(take: number = 30): Promise<AihotDailiesList> {
   try {
-    digests = await readAllDigests()
-  } catch {
-    return null
+    const data = await fetchJson<{ count: number; items: AihotDailyIndex[] }>(
+      `${AIHOT_BASE}/api/public/dailies?take=${take}`,
+    )
+    return { ok: true, items: data.items }
+  } catch (e) {
+    return { ok: false, items: [], error: String(e) }
   }
-
-  let event: AINewsEvent | null = null
-  for (const digest of digests) {
-    const found = digest.events.find((ev) => eventIds(ev).includes(id))
-    if (found) {
-      event = found
-      break
-    }
-  }
-
-  if (!event) return null
-
-  const related: AINewsRelatedEvent[] = []
-  const clusterKey = event.cluster_key
-  if (clusterKey) {
-    const seen = new Set<number>([id])
-    for (const digest of digests) {
-      for (const ev of digest.events) {
-        if (ev.cluster_key !== clusterKey) continue
-        const relatedId = primaryEventId(ev)
-        if (relatedId === null || seen.has(relatedId)) continue
-        seen.add(relatedId)
-        related.push({
-          id: relatedId,
-          title_zh: ev.title_zh,
-          title: ev.title,
-          company: ev.company,
-          published_at: ev.published_at,
-          importance_score: ev.importance_score,
-        })
-      }
-    }
-    related.sort((a, b) => {
-      const at = a.published_at ? new Date(a.published_at).getTime() : 0
-      const bt = b.published_at ? new Date(b.published_at).getTime() : 0
-      return bt - at
-    })
-  }
-
-  return { event, related_events: related.slice(0, 5) }
 }
 
-export function groupByCompany(events: AINewsEvent[]): Map<AINewsCompany, AINewsEvent[]> {
-  const m = new Map<AINewsCompany, AINewsEvent[]>()
-  for (const e of events) {
-    const arr = m.get(e.company) ?? []
-    arr.push(e)
-    m.set(e.company, arr)
-  }
-  for (const arr of m.values()) {
-    arr.sort((a, b) => b.importance_score - a.importance_score)
-  }
-  return m
+export function totalItems(daily: AihotDaily): number {
+  return daily.sections.reduce((sum, s) => sum + s.items.length, 0)
 }
