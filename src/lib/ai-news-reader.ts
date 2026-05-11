@@ -37,6 +37,7 @@ export interface AihotDailySnapshot {
   ok: boolean
   error?: string
   ageSeconds: number | null
+  fetchedAt: string | null
   daily: AihotDaily | null
 }
 
@@ -68,35 +69,48 @@ export function orderSections(sections: AihotSection[]): AihotSection[] {
   return [...sections].sort((a, b) => idx(a.label) - idx(b.label))
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
+async function fetchJsonWithMeta<T>(url: string): Promise<{ data: T; fetchedAt: string | null }> {
   const resp = await fetch(url, {
     headers: { "User-Agent": AIHOT_UA, Accept: "application/json" },
     next: { revalidate: 600 },
   })
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-  return (await resp.json()) as T
+  // Date header is the upstream response time; Next caches it alongside body,
+  // so cache hits return the original fetch time — exactly what we want to surface.
+  const fetchedAt = resp.headers.get("date")
+  const data = (await resp.json()) as T
+  return { data, fetchedAt }
+}
+
+async function fetchJson<T>(url: string): Promise<T> {
+  const { data } = await fetchJsonWithMeta<T>(url)
+  return data
 }
 
 export async function readToday(): Promise<AihotDailySnapshot> {
   try {
-    const daily = await fetchJson<AihotDaily>(`${AIHOT_BASE}/api/public/daily`)
+    const { data: daily, fetchedAt } = await fetchJsonWithMeta<AihotDaily>(
+      `${AIHOT_BASE}/api/public/daily`,
+    )
     const ageMs = Date.now() - new Date(daily.generatedAt).getTime()
-    return { ok: true, ageSeconds: Math.max(0, Math.round(ageMs / 1000)), daily }
+    return { ok: true, ageSeconds: Math.max(0, Math.round(ageMs / 1000)), fetchedAt, daily }
   } catch (e) {
-    return { ok: false, ageSeconds: null, daily: null, error: String(e) }
+    return { ok: false, ageSeconds: null, fetchedAt: null, daily: null, error: String(e) }
   }
 }
 
 export async function readByDate(date: string): Promise<AihotDailySnapshot> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return { ok: false, ageSeconds: null, daily: null, error: "invalid date format" }
+    return { ok: false, ageSeconds: null, fetchedAt: null, daily: null, error: "invalid date format" }
   }
   try {
-    const daily = await fetchJson<AihotDaily>(`${AIHOT_BASE}/api/public/daily/${date}`)
+    const { data: daily, fetchedAt } = await fetchJsonWithMeta<AihotDaily>(
+      `${AIHOT_BASE}/api/public/daily/${date}`,
+    )
     const ageMs = Date.now() - new Date(daily.generatedAt).getTime()
-    return { ok: true, ageSeconds: Math.max(0, Math.round(ageMs / 1000)), daily }
+    return { ok: true, ageSeconds: Math.max(0, Math.round(ageMs / 1000)), fetchedAt, daily }
   } catch (e) {
-    return { ok: false, ageSeconds: null, daily: null, error: String(e) }
+    return { ok: false, ageSeconds: null, fetchedAt: null, daily: null, error: String(e) }
   }
 }
 

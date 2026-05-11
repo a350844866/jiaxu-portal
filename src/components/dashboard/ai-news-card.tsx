@@ -18,6 +18,16 @@ function fmtAge(sec: number): string {
   return `${Math.floor(sec / 86400)}d`
 }
 
+function fmtClock(iso: string | null): string | null {
+  if (!iso) return null
+  const t = Date.parse(iso)
+  if (!Number.isFinite(t)) return null
+  const d = new Date(t)
+  const hh = String(d.getHours()).padStart(2, "0")
+  const mm = String(d.getMinutes()).padStart(2, "0")
+  return `${hh}:${mm}`
+}
+
 export async function AINewsCard() {
   const snap = await readToday()
 
@@ -62,7 +72,16 @@ export async function AINewsCard() {
           </a>
         </div>
         <div className="flex items-center gap-3 text-xs text-zinc-500">
-          {snap.ageSeconds !== null && <span>更新于 {fmtAge(snap.ageSeconds)} 前</span>}
+          {snap.ageSeconds !== null && (
+            <span title="卡兹克生成日报的时间(每天北京 8 点)">
+              日报生成于 {fmtAge(snap.ageSeconds)} 前
+            </span>
+          )}
+          {snap.fetchedAt && (
+            <span title={`本机拉取 aihot 的时间(每 10 分钟最多 1 次, ${snap.fetchedAt})`}>
+              拉取于 {fmtClock(snap.fetchedAt)}
+            </span>
+          )}
           <Link href="/ai-news" className="hover:text-zinc-300">
             历史 →
           </Link>
