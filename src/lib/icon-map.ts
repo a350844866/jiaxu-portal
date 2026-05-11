@@ -5,7 +5,7 @@ import {
   HeartHandshake, Container, Server, Globe, Archive,
   PanelLeft, Rocket, Network, Database, MessageSquare,
   Code2, Home, Cloud, LayoutDashboard, Building2,
-  CandlestickChart,
+  CandlestickChart, Workflow,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
@@ -17,5 +17,5 @@ export const iconMap: Record<string, LucideIcon> = {
   HeartHandshake, Container, Server, Globe, Archive,
   PanelLeft, Rocket, Network, Database, MessageSquare,
   Code2, Home, Cloud, LayoutDashboard, Building2,
-  CandlestickChart,
+  CandlestickChart, Workflow,
 }

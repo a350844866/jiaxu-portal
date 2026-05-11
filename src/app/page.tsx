@@ -7,6 +7,7 @@ import { RateLimitCard } from "@/components/dashboard/rate-limit-card"
 import { ResourceRail } from "@/components/dashboard/resource-rail"
 import { TodoCard } from "@/components/dashboard/todo-card"
 import { AINewsCard } from "@/components/dashboard/ai-news-card"
+import { N8nCard } from "@/components/dashboard/n8n-card"
 
 export const revalidate = 30
 
@@ -22,6 +23,7 @@ export default async function Home() {
       <TokenCard />
       <RateLimitCard />
       <AINewsCard />
+      <N8nCard />
       <TodoCard />
       <ServiceGrid services={services} initialHealth={health} />
       <footer className="mt-12 text-center text-xs text-zinc-600">

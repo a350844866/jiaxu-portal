@@ -29,6 +29,9 @@ services:
       - VAULT_DIR=/data/vault
       - WIFE_OBSERVER_API_TOKEN=${WIFE_OBSERVER_API_TOKEN}
       - WIFE_OBSERVER_BACKEND_URL=${WIFE_OBSERVER_BACKEND_URL}
+      - N8N_API_URL=${N8N_API_URL}
+      - N8N_API_KEY=${N8N_API_KEY}
+      - N8N_PUBLIC_URL=${N8N_PUBLIC_URL}
     volumes:
       - ./data/surge-rules:/data/surge-rules
       - ./data/auth:/data/auth
