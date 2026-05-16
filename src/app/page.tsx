@@ -5,6 +5,7 @@ import { ServiceGrid } from "@/components/dashboard/service-grid"
 import { TokenCard } from "@/components/dashboard/token-card"
 import { RateLimitCard } from "@/components/dashboard/rate-limit-card"
 import { ResourceRail } from "@/components/dashboard/resource-rail"
+import { MacMiniRail } from "@/components/dashboard/mac-mini-rail"
 import { TodoCard } from "@/components/dashboard/todo-card"
 import { AINewsCard } from "@/components/dashboard/ai-news-card"
 import { N8nCard } from "@/components/dashboard/n8n-card"
@@ -20,6 +21,7 @@ export default async function Home() {
       <div className="-mx-4 sm:-mx-6">
         <ResourceRail />
       </div>
+      <MacMiniRail />
       <TokenCard />
       <RateLimitCard />
       <AINewsCard />
