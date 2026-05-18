@@ -77,25 +77,30 @@ export async function TodoCard() {
   const total = open.length
 
   return (
-    <section className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950/40 p-4">
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <ListTodo className="h-4 w-4 text-zinc-300" />
-          <span className="text-sm font-medium text-zinc-200">待办</span>
-          <span className="text-xs text-zinc-500">{total} 项</span>
-        </div>
-        <div className="text-xs text-zinc-500">
-          来源:<code className="text-zinc-400">vault/TODO.md</code>
-          {snap.ageSeconds !== null && (
-            <span className="ml-2">更新于 {fmtAge(snap.ageSeconds)}</span>
-          )}
-        </div>
-      </header>
+    <section className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950/40">
+      <details className="group">
+        <summary className="flex cursor-pointer list-none items-center justify-between p-4 hover:bg-zinc-900/30">
+          <div className="flex items-center gap-2">
+            <ListTodo className="h-4 w-4 text-zinc-300" />
+            <span className="text-sm font-medium text-zinc-200">待办</span>
+            <span className="text-xs text-zinc-500">{total} 项</span>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-zinc-500">
+            <span>
+              来源:<code className="text-zinc-400">vault/TODO.md</code>
+              {snap.ageSeconds !== null && (
+                <span className="ml-2">更新于 {fmtAge(snap.ageSeconds)}</span>
+              )}
+            </span>
+            <span className="text-zinc-600 group-open:hidden">展开 ▾</span>
+            <span className="hidden text-zinc-600 group-open:inline">收起 ▴</span>
+          </div>
+        </summary>
 
       {total === 0 ? (
-        <div className="mt-3 text-sm text-zinc-500">没有待办 — 想加 → 编辑 vault/TODO.md</div>
+        <div className="px-4 pb-4 text-sm text-zinc-500">没有待办 — 想加 → 编辑 vault/TODO.md</div>
       ) : (
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-3">
           {systems.map((sys) => {
             const items = grouped.get(sys)!.slice().sort(sortItems)
             const meta = SYSTEM_LABELS[sys] ?? {
@@ -148,6 +153,7 @@ export async function TodoCard() {
           })}
         </div>
       )}
+      </details>
     </section>
   )
 }

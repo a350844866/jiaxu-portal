@@ -42,16 +42,16 @@ function beijingMonthStartUtc(): Date {
 
 /**
  * Claude Pro 最近一次周重置时刻（UTC）。
- * 重置点：每周五 07:00 北京时间 = 周四 23:00 UTC。
+ * 重置点：每周日 11:00 北京时间 = 周日 03:00 UTC。
  */
 function weeklyResetUtc(): Date {
   const now = new Date()
   const d = new Date(now)
-  // getUTCDay: 0=Sun, 1=Mon, ..., 4=Thu, 5=Fri
-  const daysSinceThu = (d.getUTCDay() - 4 + 7) % 7
-  d.setUTCDate(d.getUTCDate() - daysSinceThu)
-  d.setUTCHours(23, 0, 0, 0) // Thu 23:00 UTC = Fri 07:00 Beijing
-  // 如果算出来是未来（今天是周四但还没到 23:00 UTC），退 7 天
+  // getUTCDay: 0=Sun, 1=Mon, ..., 6=Sat
+  const daysSinceSun = d.getUTCDay()
+  d.setUTCDate(d.getUTCDate() - daysSinceSun)
+  d.setUTCHours(3, 0, 0, 0) // Sun 03:00 UTC = Sun 11:00 Beijing
+  // 如果算出来是未来（今天是周日但还没到 03:00 UTC），退 7 天
   if (d.getTime() > now.getTime()) {
     d.setUTCDate(d.getUTCDate() - 7)
   }
@@ -567,7 +567,7 @@ function listCodexSessions(): CodexSessionTokens[] {
 
 /**
  * Aggregate Codex sessions by model for RateLimitCard (全局,不按 cwd 过滤).
- * weekly 窗口用 Codex 自己的重置点(codexWeeklyResetUtc),不跟 Claude 的周五 07:00。
+ * weekly 窗口用 Codex 自己的重置点(codexWeeklyResetUtc),不跟 Claude 的周日 11:00。
  */
 function getCodexModels(): ModelUsage[] {
   const todayEpoch = Math.floor(beijingTodayUtc().getTime() / 1000)
