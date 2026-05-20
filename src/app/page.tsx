@@ -10,6 +10,7 @@ import { TodoCard } from "@/components/dashboard/todo-card"
 import { AINewsCard } from "@/components/dashboard/ai-news-card"
 import { N8nCard } from "@/components/dashboard/n8n-card"
 import { ZhihuHotCard } from "@/components/dashboard/zhihu-hot-card"
+import { VideoSampleCard } from "@/components/dashboard/video-sample-card"
 
 export const revalidate = 30
 
@@ -22,6 +23,7 @@ export default async function Home() {
       <div className="-mx-4 sm:-mx-6">
         <ResourceRail />
       </div>
+      <VideoSampleCard />
       <MacMiniRail />
       <TokenCard />
       <RateLimitCard />
