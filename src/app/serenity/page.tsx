@@ -23,12 +23,10 @@ export default async function SerenityPage() {
   const ledger = ledgerRes.ledger
   const tweets = tweetsRes.ok ? tweetsRes.tweets : []
 
-  // Recent window for charts (last 14 days of activity)
+  // Recent window for charts: last 14 active days (slides with the corpus, no hardcoded date)
   const days = tweetCountByDay(tweets).slice(-14)
-  const recentTweets = tweets.filter((t) => {
-    const cutoff = ledger.last_distilled_ts.slice(0, 10)
-    return t.timestamp.slice(0, 10) >= "2026-05-15" || cutoff === ""
-  })
+  const heatCutoff = days[0]?.day ?? ""
+  const recentTweets = tweets.filter((t) => t.timestamp.slice(0, 10) >= heatCutoff)
   const heat = tickerMentionCounts(recentTweets)
   const verdicts = verdictBreakdown(ledger.predictions)
 
