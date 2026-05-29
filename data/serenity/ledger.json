@@ -1,0 +1,43 @@
+{
+  "updated": "2026-05-29",
+  "last_distilled_ts": "2026-05-28T19:09:33.000Z",
+  "self_reported": { "ytd_pct": 4502.45, "two_year_pct": 22561.99, "as_of": "2026-05-26" },
+  "positions": [
+    { "ticker": "SIVE", "name": "Sivers", "chain": "CPO/光子激光上游", "stance": "加码", "thesis": "Ayar/Lightmatter/Celestial 的 sole-source 激光;$2.6B MC 拿同行 $5-15B 反推 → next $80B $LITE;一股没卖+计划增持", "instrument": "现货", "last_mention": "2026-05-28", "status": "active" },
+    { "ticker": "XFAB", "name": "X-Fab", "chain": "SiC foundry + 光子", "stance": "新开", "thesis": "NIST 称美国唯一高产能 SiC = critical infra;power semi 主线 + silicon photonics 期权;EU Chips Act 2 catalyst", "instrument": "现货", "last_mention": "2026-05-28", "status": "active" },
+    { "ticker": "EWY", "name": "iShares Korea", "chain": "韩国 memory 代理", "stance": "加码", "thesis": "IV 套利 + SK Hynix/Samsung memory 升值;自报 +428%/5.2x in 3mo", "instrument": "OTM LEAPs", "last_mention": "2026-05-28", "status": "active" },
+    { "ticker": "AAOI", "name": "Applied Optoelectronics", "chain": "光子/激光 fab", "stance": "持有", "thesis": "$13B MC 比 $2B/$6B 时更看多;潜在 $NVDA/$AMD 长约;自报 7x", "instrument": "现货+LEAPs", "last_mention": "2026-05-28", "status": "active" },
+    { "ticker": "SOI", "name": "Soitec", "chain": "SOI substrate/硅光", "stance": "持有", "thesis": "substrate 准垄断;$44→$170-181 自报 4x;机构吃 float 后涨", "instrument": "现货", "last_mention": "2026-05-28", "status": "active" },
+    { "ticker": "AXTI", "name": "AXT Inc", "chain": "InP 衬底上游", "stance": "持有", "thesis": "光通信激光器必需,自称占上游 ~40%;自报 thousands%", "instrument": "现货+LEAPs", "last_mention": "2026-05-27", "status": "active" },
+    { "ticker": "RPI", "name": "RPI", "chain": "agentic AI hardware", "stance": "持有", "thesis": "$280→$800 自报;meme stock 框架反指标兑现", "instrument": "现货", "last_mention": "2026-05-25", "status": "active" },
+    { "ticker": "IQE", "name": "IQE plc", "chain": "化合物半导体 epitaxy", "stance": "持有", "thesis": "欧洲 long;自评只 3x+ 期望更高", "instrument": "现货", "last_mention": "2026-05-28", "status": "active" },
+    { "ticker": "NBIS", "name": "Nebius", "chain": "NeoCloud 算力", "stance": "持有", "thesis": "2025 起 long 自报 ~3x;对比 $IREN 强(dilution 结构)", "instrument": "现货", "last_mention": "2026-05-28", "status": "active" },
+    { "ticker": "NVTS", "name": "Navitas", "chain": "800VDC power semi", "stance": "持有", "thesis": "$NVDA 800VDC push 受益;自报已翻倍", "instrument": "现货", "last_mention": "2026-05-26", "status": "active" },
+    { "ticker": "LPK", "name": "Lumibird/LPKF", "chain": "玻璃 core substrate", "stance": "持有", "thesis": "准垄断;$6 thesis@$13→$24.2 自报", "instrument": "现货", "last_mention": "2026-05-25", "status": "active" },
+    { "ticker": "HPS.A", "name": "Hammond Power", "chain": "电网变压器", "stance": "观察", "thesis": "backlog 强份额高 compelling compounder;未确认建仓", "instrument": "—", "last_mention": "2026-05-28", "status": "watch" },
+    { "ticker": "VPG", "name": "Vishay Precision", "chain": "传感", "stance": "减仓", "thesis": "3x 但自承 ASP 模型错($150 vs ~$750);$TSLA design-out 砍集中度", "instrument": "现货", "last_mention": "2026-05-26", "status": "trimmed" },
+    { "ticker": "MU", "name": "Micron", "chain": "DRAM/HBM memory", "stance": "持有", "thesis": "thesis 已兑现:next $NVDA;$80→$887 破 $1T mcap 自报", "instrument": "—", "last_mention": "2026-05-26", "status": "thesis-played-out" }
+  ],
+  "predictions": [
+    { "date": "2026-05-26", "claim": "YTD 4502.45%", "falsifiable": "不可独立审计", "verdict": "不可证伪", "due": null, "note": "IBKR 子账户平台口径,非审计净值" },
+    { "date": "2026-05-26", "claim": "2 Year Return 22,561.99%", "falsifiable": "数学反推与披露仓位量级不匹配", "verdict": "不可证伪", "due": null, "note": "226x,与 2025-09 单票仓位量级不符" },
+    { "date": "2026-05-28", "claim": "$EWY 2028 LEAPs +428% / 5.2x in 3mo", "falsifiable": "options 难独立核", "verdict": "待核", "due": null, "note": "" },
+    { "date": "2026-05-28", "claim": "$SOI $44→$170-181 (4x)", "falsifiable": "价格可查", "verdict": "待核", "due": null, "note": "IBKR 恢复后补" },
+    { "date": "2026-05-26", "claim": "$MU $80→$887 破 $1T mcap", "falsifiable": "价格可查(流动票)", "verdict": "待核", "due": null, "note": "" },
+    { "date": "2026-05-28", "claim": "$RPI $280→$800", "falsifiable": "价格可查", "verdict": "待核", "due": null, "note": "" },
+    { "date": "2026-05-28", "claim": "$LPK thesis@$13→$24.2", "falsifiable": "价格可查", "verdict": "待核", "due": null, "note": "" },
+    { "date": "2026-05-26", "claim": "$VPG 3x 但 ASP 建错", "falsifiable": "他自承", "verdict": "归因不稳", "due": null, "note": "已记 entity §4" },
+    { "date": "2026-05-26", "claim": "$NVTS 已翻倍", "falsifiable": "价格可查", "verdict": "待核", "due": null, "note": "" },
+    { "date": "2026-05-25", "claim": "$SIVE BlackRock/Vanguard/MSCI 被动流入 ~$60M+ next week", "falsifiable": "可查指数纳入公告", "verdict": "待核", "due": "2026-06-01", "note": "" },
+    { "date": "2026-05-27", "claim": "EU Chips Act 2 正式公告 SIVE/SOI/XFAB 上 blueprint", "falsifiable": "公告可查", "verdict": "待核", "due": "2026-06-02", "note": "推迟到下周" },
+    { "date": "2026-05-28", "claim": "CPO 大规模出货从 H2 2026 改口 H2 2027", "falsifiable": "口径已后延", "verdict": "待核", "due": "2027-07-01", "note": "" }
+  ],
+  "catalysts": [
+    { "date": "~2026-06-01", "event": "$SIVE 指数被动流入(BlackRock/Vanguard/MSCI/OMX)+ NASDAQ 上市", "chain": "$SIVE" },
+    { "date": "~2026-06-02", "event": "EU Chips Act 2 正式公告(含 SIVE/SOI/XFAB)", "chain": "欧洲光子链" },
+    { "date": "2026-06-01", "event": "NVDA Computex Taipei keynote", "chain": "台湾全链" },
+    { "date": "2026 Q2-Q4", "event": "$AAOI 营收模型 $312M→$1.41B 拐点", "chain": "TRANSCEIVER" },
+    { "date": "3-10 月内", "event": "$JBL 1.6T LRO 量产", "chain": "$SIVE/TRANSCEIVER" },
+    { "date": "H2 2027", "event": "CPO 大规模出货", "chain": "全链" }
+  ]
+}
