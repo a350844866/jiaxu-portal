@@ -2,8 +2,15 @@
 // NO node:fs / node:path imports here, so client components can import freely.
 // Server-only IO (readLedger/readTweets) lives in serenity-reader.ts.
 
-export type Stance = "新开" | "加码" | "持有" | "减仓" | "反手做空" | "转静默" | "观察"
-export type Verdict = "兑现" | "落空" | "待核" | "不可证伪" | "归因不稳"
+// Closed enums as const arrays so they double as runtime allow-lists (parseLedger
+// clamps to these) AND as the source of the literal-union types below.
+export const STANCES = ["新开", "加码", "持有", "减仓", "反手做空", "转静默", "观察"] as const
+export const VERDICTS = ["兑现", "落空", "待核", "不可证伪", "归因不稳"] as const
+export const STATUSES = ["active", "watch", "trimmed", "thesis-played-out"] as const
+
+export type Stance = (typeof STANCES)[number]
+export type Verdict = (typeof VERDICTS)[number]
+export type Status = (typeof STATUSES)[number]
 
 export interface Position {
   ticker: string
@@ -13,7 +20,7 @@ export interface Position {
   thesis: string
   instrument: string
   last_mention: string
-  status: string
+  status: Status
 }
 
 export interface Prediction {
@@ -68,15 +75,65 @@ export function parseLikes(s: string): number {
   return Math.round(n * mult)
 }
 
-export function parseLedger(raw: string): Ledger {
-  const o = JSON.parse(raw)
+function asStr(v: unknown): string {
+  return v == null ? "" : String(v)
+}
+
+// Clamp an untrusted value to a known enum; warn (server log) on drift so a
+// renamed ledger value surfaces instead of silently rendering with a fallback.
+function clampEnum<T extends string>(v: unknown, allowed: readonly T[], fallback: T, label: string): T {
+  if (typeof v === "string" && (allowed as readonly string[]).includes(v)) return v as T
+  if (v !== undefined && v !== null) {
+    console.warn(`[serenity] unknown ${label} in ledger: ${String(v)} -> ${fallback}`)
+  }
+  return fallback
+}
+
+function coercePosition(x: unknown): Position {
+  const o = (x ?? {}) as Record<string, unknown>
   return {
-    updated: o.updated ?? "",
-    last_distilled_ts: o.last_distilled_ts ?? "",
-    self_reported: o.self_reported ?? { ytd_pct: 0, two_year_pct: 0, as_of: "" },
-    positions: Array.isArray(o.positions) ? o.positions : [],
-    predictions: Array.isArray(o.predictions) ? o.predictions : [],
-    catalysts: Array.isArray(o.catalysts) ? o.catalysts : [],
+    ticker: asStr(o.ticker),
+    name: asStr(o.name),
+    chain: asStr(o.chain),
+    stance: clampEnum(o.stance, STANCES, "观察", "stance"),
+    thesis: asStr(o.thesis),
+    instrument: asStr(o.instrument),
+    last_mention: asStr(o.last_mention),
+    status: clampEnum(o.status, STATUSES, "watch", "status"),
+  }
+}
+
+function coercePrediction(x: unknown): Prediction {
+  const o = (x ?? {}) as Record<string, unknown>
+  return {
+    date: asStr(o.date),
+    claim: asStr(o.claim),
+    falsifiable: asStr(o.falsifiable),
+    verdict: clampEnum(o.verdict, VERDICTS, "待核", "verdict"),
+    due: o.due == null ? null : String(o.due),
+    note: asStr(o.note),
+  }
+}
+
+function coerceCatalyst(x: unknown): Catalyst {
+  const o = (x ?? {}) as Record<string, unknown>
+  return { date: asStr(o.date), event: asStr(o.event), chain: asStr(o.chain) }
+}
+
+export function parseLedger(raw: string): Ledger {
+  const o = JSON.parse(raw) as Record<string, unknown>
+  const sr = (o.self_reported ?? {}) as Record<string, unknown>
+  return {
+    updated: asStr(o.updated),
+    last_distilled_ts: asStr(o.last_distilled_ts),
+    self_reported: {
+      ytd_pct: Number(sr.ytd_pct) || 0,
+      two_year_pct: Number(sr.two_year_pct) || 0,
+      as_of: asStr(sr.as_of),
+    },
+    positions: Array.isArray(o.positions) ? o.positions.map(coercePosition) : [],
+    predictions: Array.isArray(o.predictions) ? o.predictions.map(coercePrediction) : [],
+    catalysts: Array.isArray(o.catalysts) ? o.catalysts.map(coerceCatalyst) : [],
   }
 }
 

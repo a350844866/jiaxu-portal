@@ -24,16 +24,18 @@ export type {
   TweetFilter,
 } from "@/lib/serenity-pure"
 
-const CORPUS_DIR = process.env.SERENITY_CORPUS_DIR || "/data/x-corpus"
-const LEDGER_PATH = path.join(CORPUS_DIR, "ledger.json")
-const TWEETS_PATH = path.join(CORPUS_DIR, "tweets-full.json")
+// Resolved at call time (not module load) so tests can override SERENITY_CORPUS_DIR.
+function corpusDir(): string {
+  return process.env.SERENITY_CORPUS_DIR || "/data/x-corpus"
+}
 
 export async function readLedger(): Promise<
   { ok: true; ledger: Ledger; ageSeconds: number } | { ok: false; error: string }
 > {
   try {
-    const stat = await fs.stat(LEDGER_PATH)
-    const raw = await fs.readFile(LEDGER_PATH, "utf-8")
+    const ledgerPath = path.join(corpusDir(), "ledger.json")
+    const stat = await fs.stat(ledgerPath)
+    const raw = await fs.readFile(ledgerPath, "utf-8")
     return { ok: true, ledger: parseLedger(raw), ageSeconds: Math.round((Date.now() - stat.mtimeMs) / 1000) }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) }
@@ -44,8 +46,9 @@ export async function readTweets(): Promise<
   { ok: true; tweets: Tweet[]; ageSeconds: number } | { ok: false; error: string }
 > {
   try {
-    const stat = await fs.stat(TWEETS_PATH)
-    const raw = await fs.readFile(TWEETS_PATH, "utf-8")
+    const tweetsPath = path.join(corpusDir(), "tweets-full.json")
+    const stat = await fs.stat(tweetsPath)
+    const raw = await fs.readFile(tweetsPath, "utf-8")
     const arr = JSON.parse(raw)
     const list: unknown[] = Array.isArray(arr) ? arr : arr.tweets ?? []
     const tweets: Tweet[] = list.map((x) => {

@@ -1,6 +1,6 @@
-import type { Position } from "@/lib/serenity-pure"
+import type { Position, Stance } from "@/lib/serenity-pure"
 
-const STANCE_TONE: Record<string, string> = {
+const STANCE_TONE: Record<Stance, string> = {
   新开: "border-emerald-500/40 bg-emerald-500/5 text-emerald-200",
   加码: "border-rose-500/40 bg-rose-500/5 text-rose-200",
   持有: "border-zinc-600/40 bg-zinc-700/10 text-zinc-200",
@@ -10,7 +10,7 @@ const STANCE_TONE: Record<string, string> = {
   观察: "border-yellow-500/30 bg-yellow-500/5 text-yellow-200",
 }
 
-const STANCE_ICON: Record<string, string> = {
+const STANCE_ICON: Record<Stance, string> = {
   新开: "🆕", 加码: "🔥", 持有: "➡️", 减仓: "📉", 反手做空: "🔄", 转静默: "🤫", 观察: "👀",
 }
 

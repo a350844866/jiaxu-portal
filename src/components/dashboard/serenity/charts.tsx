@@ -1,6 +1,6 @@
 import type { Verdict } from "@/lib/serenity-pure"
 
-const VERDICT_COLOR: Record<string, string> = {
+const VERDICT_COLOR: Record<Verdict, string> = {
   兑现: "#34d399", 落空: "#f87171", 待核: "#fbbf24", 不可证伪: "#71717a", 归因不稳: "#a78bfa",
 }
 
@@ -43,6 +43,14 @@ export function TickerHeatChart({ data }: { data: { ticker: string; count: numbe
 }
 
 export function VerdictDonut({ data }: { data: { verdict: Verdict; count: number }[] }) {
+  if (!data.length) {
+    return (
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+        <h3 className="mb-3 text-xs font-medium text-zinc-400">预测判定分布</h3>
+        <p className="text-xs text-zinc-600">暂无预测</p>
+      </div>
+    )
+  }
   const total = data.reduce((s, d) => s + d.count, 0) || 1
   let acc = 0
   const R = 40, C = 2 * Math.PI * R
