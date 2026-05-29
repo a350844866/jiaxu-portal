@@ -18,6 +18,7 @@ export function TrustScorecard({
   const miss = count("落空")
   const checkable = hit + miss
   const hitRate = checkable > 0 ? Math.round((hit / checkable) * 100) : null
+  const excluded = verdicts.reduce((s, d) => s + d.count, 0) - checkable
   const sr = ledger.self_reported
 
   return (
@@ -66,8 +67,9 @@ export function TrustScorecard({
                   <div className="bg-emerald-500/70" style={{ width: `${(hit / checkable) * 100}%` }} />
                   <div className="bg-red-500/60" style={{ width: `${(miss / checkable) * 100}%` }} />
                 </div>
-                <div className="mt-1 text-[10px] text-zinc-600">
-                  可独立核对 {checkable} 条(✅{hit} / ❌{miss})
+                <div className="mt-1 text-[10px] text-zinc-500">
+                  仅计可证伪的兑现/落空 {checkable} 条(✅{hit} / ❌{miss})
+                  {excluded > 0 && `;另 ${excluded} 条待核/不可证伪/归因不稳不计入分母`}
                 </div>
               </>
             ) : (
@@ -76,15 +78,18 @@ export function TrustScorecard({
           </div>
         </div>
         <ul className="mt-3 flex flex-wrap gap-1.5">
-          {verdicts.map((d) => (
-            <li
-              key={d.verdict}
-              className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] ${VERDICT[d.verdict].chip}`}
-            >
-              {VERDICT[d.verdict].icon} {d.verdict}
-              <span className="tabular-nums opacity-70">{d.count}</span>
-            </li>
-          ))}
+          {verdicts.map((d) => {
+            const vs = VERDICT[d.verdict] ?? VERDICT.待核
+            return (
+              <li
+                key={d.verdict}
+                className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] ${vs.chip}`}
+              >
+                {vs.icon} {d.verdict}
+                <span className="tabular-nums opacity-70">{d.count}</span>
+              </li>
+            )
+          })}
         </ul>
       </div>
     </div>

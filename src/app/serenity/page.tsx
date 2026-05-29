@@ -89,7 +89,7 @@ export default async function SerenityPage() {
           </div>
           <div className="hidden h-10 w-px bg-zinc-800 sm:block" />
           <div className="hidden flex-col items-end gap-1 sm:flex">
-            <span className="text-[10px] text-zinc-600">活跃脉搏 · 近 14 日</span>
+            <span className="text-[10px] text-zinc-600">活跃脉搏 · 近 14 活跃日</span>
             <Sparkline data={days} className="h-8" />
           </div>
         </div>
@@ -118,7 +118,7 @@ export default async function SerenityPage() {
       >
         <div className="mb-4 grid grid-cols-2 gap-3 sm:max-w-xs">
           <Stat value={active} label="活跃持仓" accent="#34d399" />
-          <Stat value={newThisWeek} label="本周新开" accent="#34d399" />
+          <Stat value={newThisWeek} label="新开仓位" accent="#34d399" />
         </div>
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2">

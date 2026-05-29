@@ -1,4 +1,5 @@
 "use client"
+import { useEffect } from "react"
 import { filterTweets, type Tweet } from "@/lib/serenity-pure"
 import { X } from "lucide-react"
 import { TweetItem } from "./tweet-item"
@@ -12,6 +13,16 @@ export function TickerDrawer({
   tweets: Tweet[]
   onClose: () => void
 }) {
+  // 抽屉打开时锁背景滚动,关闭/卸载恢复(hook 始终调用以满足顺序规则)。
+  useEffect(() => {
+    if (!ticker) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [ticker])
+
   if (!ticker) return null
   const hits = filterTweets(tweets, { ticker }).slice(0, 50)
   return (
@@ -37,7 +48,7 @@ export function TickerDrawer({
         </div>
         <ul className="flex-1 space-y-2 overflow-y-auto p-4">
           {hits.length === 0 ? (
-            <p className="text-xs text-zinc-600">语料里没有提到这个 ticker</p>
+            <p className="text-xs text-zinc-500">语料里没有提到这个 ticker</p>
           ) : (
             hits.map((t) => <TweetItem key={t.id} t={t} />)
           )}

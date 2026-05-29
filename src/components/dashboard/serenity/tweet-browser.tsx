@@ -51,8 +51,10 @@ export function TweetBrowser({ tweets }: { tweets: Tweet[] }) {
         </select>
         <span className="ml-auto text-[10px] tabular-nums text-zinc-600">{filtered.length} 条</span>
       </div>
-      {shown.length === 0 ? (
-        <p className="py-6 text-center text-xs text-zinc-600">没有匹配的推文</p>
+      {tweets.length === 0 ? (
+        <p className="py-6 text-center text-xs text-zinc-500">语料未加载(corpus 读取失败或为空)</p>
+      ) : shown.length === 0 ? (
+        <p className="py-6 text-center text-xs text-zinc-500">没有匹配的推文,试试放宽筛选条件</p>
       ) : (
         <ul className="space-y-2">
           {shown.map((t) => (

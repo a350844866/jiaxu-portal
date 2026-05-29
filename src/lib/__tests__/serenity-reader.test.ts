@@ -20,6 +20,10 @@ describe("parseLikes", () => {
     expect(parseLikes("")).toBe(0)
     expect(parseLikes("abc")).toBe(0)
   })
+  it("strips thousands separators", () => {
+    expect(parseLikes("1,234")).toBe(1234)
+    expect(parseLikes("12,345")).toBe(12345)
+  })
 })
 
 describe("parseLedger", () => {

@@ -18,7 +18,7 @@ export function Sparkline({
           key={d.day}
           title={`${d.day}: ${d.count} 推`}
           className="w-1.5 rounded-sm bg-gradient-to-t from-sky-500/30 to-sky-400/70"
-          style={{ height: `${Math.max(8, (d.count / max) * 100)}%` }}
+          style={{ height: d.count === 0 ? "2px" : `${Math.max(8, (d.count / max) * 100)}%` }}
         />
       ))}
     </div>
@@ -80,7 +80,7 @@ export function DonutChart({
       <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
         <circle cx="50" cy="50" r={R} fill="none" stroke="#27272a" strokeWidth="11" />
         {single ? (
-          <circle cx="50" cy="50" r={R} fill="none" stroke={VERDICT[data[0].verdict].hex} strokeWidth="11" />
+          <circle cx="50" cy="50" r={R} fill="none" stroke={VERDICT[data[0].verdict]?.hex ?? "#71717a"} strokeWidth="11" />
         ) : (
           data.map((d) => {
             const frac = d.count / total
@@ -91,7 +91,7 @@ export function DonutChart({
                 cy="50"
                 r={R}
                 fill="none"
-                stroke={VERDICT[d.verdict].hex}
+                stroke={VERDICT[d.verdict]?.hex ?? "#71717a"}
                 strokeWidth="11"
                 strokeDasharray={`${frac * C} ${C}`}
                 strokeDashoffset={-acc * C}

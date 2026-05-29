@@ -47,7 +47,9 @@ export interface Ledger {
   catalysts: Catalyst[]
 }
 
-const TICKER_RE = /\$([A-Z]{1,6}(?:\.[A-Z])?)\b/g
+// 单一来源:筛选/计数(.match→slice(1))与正文高亮(.split,捕获组含 $)共用。
+// 捕获组把 $ 含在内,使 split 保留的片段带 $,便于高亮判定。
+export const TICKER_RE = /(\$[A-Z]{1,6}(?:\.[A-Z])?)\b/g
 
 export interface Tweet {
   id: string
@@ -67,12 +69,19 @@ export interface TweetFilter {
 
 export function parseLikes(s: string): number {
   if (!s) return 0
-  const m = /^(\d+(?:\.\d+)?)\s*([KM]?)$/i.exec(s.trim())
+  // 剥千分位逗号("1,234"→1234),否则正则失配静默归零、minLikes 筛选会漏掉高赞推
+  const m = /^(\d+(?:\.\d+)?)\s*([KM]?)$/i.exec(s.trim().replace(/,/g, ""))
   if (!m) return 0
   const n = parseFloat(m[1])
   if (isNaN(n)) return 0
   const mult = m[2].toUpperCase() === "K" ? 1000 : m[2].toUpperCase() === "M" ? 1_000_000 : 1
   return Math.round(n * mult)
+}
+
+// 抓取来的 url 不可信:只放行 http/https,挡掉 javascript:/data: 等注入。非法返回 ""。
+export function safeHttpUrl(s: string): string {
+  const t = s.trim()
+  return /^https?:\/\//i.test(t) ? t : ""
 }
 
 function asStr(v: unknown): string {
