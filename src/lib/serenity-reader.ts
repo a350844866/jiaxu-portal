@@ -12,6 +12,7 @@ export {
   tweetCountByDay,
   tickerMentionCounts,
   verdictBreakdown,
+  sortCatalysts,
 } from "@/lib/serenity-pure"
 export type {
   Stance,

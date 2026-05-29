@@ -32,11 +32,15 @@ export function HoldingsGrid({
         const items = byTier.get(t)!
         return (
           <div key={t}>
-            <div className="mb-2.5 flex items-center gap-2">
+            <div
+              className="mb-2.5 flex items-center gap-2"
+              title="产业链分层为按 chain 文本启发式推断,以卡片内 chain 原文为准"
+            >
               <span className="h-2 w-2 rounded-full" style={{ background: tier.hex }} />
               <span className="text-[11px] font-medium text-zinc-300">{tier.label}</span>
-              <span className="text-[10px] text-zinc-600">{tier.sub}</span>
-              <span className="ml-auto text-[10px] tabular-nums text-zinc-600">{items.length} 仓</span>
+              <span className="text-[10px] text-zinc-500">{tier.sub}</span>
+              <span className="text-[9px] text-zinc-600">· 推断</span>
+              <span className="ml-auto text-[10px] tabular-nums text-zinc-500">{items.length} 仓</span>
             </div>
             <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
               {items.map((p) => {

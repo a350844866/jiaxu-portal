@@ -12,7 +12,11 @@ import { PANEL } from "@/components/dashboard/serenity/theme"
 
 export const dynamic = "force-dynamic"
 
-function freshness(sec: number): { text: string; stale: boolean } {
+// 优先用 ledger 自带的 last_distilled_ts(语义=蒸馏时刻,比文件 mtime 准:文件可能被
+// git checkout / rsync 无意 touch);解析失败回退 mtime 派生的 ageSeconds。
+function freshness(isoTs: string, fallbackSec: number): { text: string; stale: boolean } {
+  const parsed = Date.parse(isoTs)
+  const sec = Number.isNaN(parsed) ? fallbackSec : (Date.now() - parsed) / 1000
   const d = Math.floor(sec / 86400)
   if (d <= 0) return { text: "今日蒸馏", stale: false }
   if (d === 1) return { text: "1 天前蒸馏", stale: false }
@@ -34,7 +38,7 @@ export default async function SerenityPage() {
 
   const ledger = ledgerRes.ledger
   const tweets = tweetsRes.ok ? tweetsRes.tweets : []
-  const fresh = freshness(ledgerRes.ageSeconds)
+  const fresh = freshness(ledger.last_distilled_ts, ledgerRes.ageSeconds)
 
   const days = tweetCountByDay(tweets).slice(-14)
   const heatCutoff = days[0]?.day ?? ""

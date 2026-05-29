@@ -194,3 +194,25 @@ export function verdictBreakdown(preds: Prediction[]): { verdict: Verdict; count
   for (const p of preds) m.set(p.verdict, (m.get(p.verdict) ?? 0) + 1)
   return Array.from(m.entries()).map(([verdict, count]) => ({ verdict, count }))
 }
+
+// catalyst date 是混合格式(YYYY-MM-DD / ~YYYY-MM-DD / "YYYY Qn" / "Hn YYYY" / "3-10 月内"),
+// 提取可排序数字键(升序=时间最近在前)。无法定位年份的(纯相对时段)排末尾,不随机插入。
+export function catalystSortKey(date: string): number {
+  const ymd = /(\d{4})-(\d{2})-(\d{2})/.exec(date)
+  if (ymd) return Number(ymd[1] + ymd[2] + ymd[3])
+  const year = /(\d{4})/.exec(date)
+  if (!year) return Number.MAX_SAFE_INTEGER
+  const q = /Q([1-4])/i.exec(date)
+  const h = /H([12])/i.exec(date)
+  // Q1→3 Q2→6 Q3→9 Q4→12;H1→6 H2→12;只有年→年中
+  const mm = q ? Number(q[1]) * 3 : h ? Number(h[1]) * 6 : 0
+  return Number(year[1]) * 10000 + mm * 100
+}
+
+// 不信任 ledger 书写顺序,渲染前确定性排序;同键保持原序(稳定)。
+export function sortCatalysts(catalysts: Catalyst[]): Catalyst[] {
+  return catalysts
+    .map((c, i) => ({ c, i, k: catalystSortKey(c.date) }))
+    .sort((a, b) => a.k - b.k || a.i - b.i)
+    .map((x) => x.c)
+}

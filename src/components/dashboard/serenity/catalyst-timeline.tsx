@@ -1,23 +1,25 @@
-import type { Catalyst } from "@/lib/serenity-pure"
+import { sortCatalysts, type Catalyst } from "@/lib/serenity-pure"
 import { PANEL } from "./theme"
 
-// 第③幕:接下来盯什么。竖向时间线,首个节点(最近 catalyst)高亮。
+// 第③幕:接下来盯什么。竖向时间线,自己按日期排序(不信任 ledger 书写顺序),
+// 排序后首个节点(时间最近)高亮。
 export function CatalystTimeline({ catalysts }: { catalysts: Catalyst[] }) {
   if (!catalysts.length) {
-    return <div className={`${PANEL} p-4 text-xs text-zinc-600`}>暂无前瞻 catalyst</div>
+    return <div className={`${PANEL} p-4 text-xs text-zinc-500`}>暂无前瞻 catalyst</div>
   }
+  const sorted = sortCatalysts(catalysts)
   return (
     <div className={`${PANEL} p-4 sm:p-5`}>
       <ol className="relative space-y-4 border-l border-zinc-800 pl-6">
-        {catalysts.map((c, i) => {
+        {sorted.map((c, i) => {
           const soon = i === 0
           return (
-            <li key={i} className="relative">
+            <li key={`${c.date}-${c.event}`} className="relative">
               <span
                 className={`absolute top-0.5 flex h-3 w-3 items-center justify-center rounded-full border-2 ${
                   soon ? "border-sky-400 bg-sky-400/30" : "border-zinc-600 bg-zinc-900"
                 }`}
-                style={{ left: "-1.86rem" }}
+                style={{ left: "-1.875rem" /* = pl-6(1.5rem) + 圆点半径(0.375rem),圆心压 border */ }}
               >
                 {soon && <span className="h-1 w-1 animate-ping rounded-full bg-sky-300" />}
               </span>

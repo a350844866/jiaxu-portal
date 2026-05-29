@@ -24,7 +24,7 @@ export function TrustScorecard({
   return (
     <div className="grid gap-3 md:grid-cols-2">
       {/* 自报战绩 — 警示色,强调不可独立审计 */}
-      <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/[0.08] to-transparent p-4">
+      <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/[0.08] to-transparent p-4 backdrop-blur-sm">
         <div className="flex items-center gap-1.5 text-[11px] font-medium text-amber-300/90">
           <TriangleAlert className="h-3.5 w-3.5" />
           自报战绩 · 不可独立审计

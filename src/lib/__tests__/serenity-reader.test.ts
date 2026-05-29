@@ -4,6 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import { parseLikes, parseLedger, readLedger, readTweets, type Ledger } from "../serenity-reader"
 import { filterTweets, tweetCountByDay, tickerMentionCounts, verdictBreakdown, type Tweet } from "../serenity-reader"
+import { sortCatalysts, catalystSortKey } from "../serenity-pure"
 
 describe("parseLikes", () => {
   it("parses plain numbers", () => {
@@ -197,6 +198,24 @@ describe("aggregates", () => {
       { id: "a", text: "$SIVE $SIVE again $SIVE", timestamp: "2026-05-28T10:00:00.000Z", likes: 1, likesRaw: "1", url: "" },
     ]
     expect(tickerMentionCounts(t)).toEqual([{ ticker: "SIVE", count: 1 }])
+  })
+  it("sortCatalysts orders by date ascending, no-year dates last", () => {
+    const cs = [
+      { date: "H2 2027", event: "CPO ship", chain: "全链" },
+      { date: "~2026-06-02", event: "EU Chips", chain: "欧洲" },
+      { date: "3-10 月内", event: "JBL LRO", chain: "SIVE" },
+      { date: "2026-06-01", event: "Computex", chain: "台湾" },
+    ]
+    const out = sortCatalysts(cs).map((c) => c.event)
+    // 按日升序:06-01 → 06-02 → H2 2027;无年份的"3-10 月内"排末,不随机插入
+    expect(out).toEqual(["Computex", "EU Chips", "CPO ship", "JBL LRO"])
+  })
+  it("catalystSortKey parses ymd / quarter / half / relative", () => {
+    expect(catalystSortKey("2026-06-01")).toBe(20260601)
+    expect(catalystSortKey("~2026-06-02")).toBe(20260602)
+    expect(catalystSortKey("3-10 月内")).toBe(Number.MAX_SAFE_INTEGER)
+    // Q2-Q4 命中 Q2→月6(年中),仍早于次年 H2;两者都是有年份的相对档
+    expect(catalystSortKey("2026 Q2-Q4")).toBeLessThan(catalystSortKey("H2 2027"))
   })
   it("verdictBreakdown tallies prediction verdicts", () => {
     const preds = [
