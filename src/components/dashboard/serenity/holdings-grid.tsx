@@ -34,9 +34,11 @@ export function HoldingsGrid({
           <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">{chain}</h3>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((p) => (
-              <div
+              <button
                 key={p.ticker}
-                className={`rounded-xl border p-3 ${STANCE_TONE[p.stance] ?? STANCE_TONE.持有}`}
+                type="button"
+                onClick={() => onPickTicker?.(p.ticker)}
+                className={`rounded-xl border p-3 text-left ${STANCE_TONE[p.stance] ?? STANCE_TONE.持有} ${onPickTicker ? "cursor-pointer hover:brightness-125" : ""}`}
               >
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-sm font-semibold">${p.ticker}</span>
@@ -45,7 +47,7 @@ export function HoldingsGrid({
                 <div className="mt-1 text-[11px] text-zinc-400">{p.name} · {p.instrument}</div>
                 <p className="mt-2 text-xs leading-relaxed text-zinc-300">{p.thesis}</p>
                 <div className="mt-2 text-[10px] text-zinc-500">最近提及 {p.last_mention}</div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
