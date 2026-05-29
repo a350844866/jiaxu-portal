@@ -1001,7 +1001,7 @@ git -c user.email=jiaxu@local commit -m "feat(serenity): mount corpus + env, dep
 
 - [ ] **Step 1: Add service card**
 
-In `src/config/services-data.ts`, in the `my-projects` section array, add an entry. NOTE: `healthUrl` is **required** by `ServiceDefinition` (no `?`). For a relative portal sub-route, `getInternalUrl` already special-cases `url.startsWith("/")` to use the relative path directly; set `healthUrl` to the portal's own origin so the health check passes. Use icon `CandlestickChart` — it is **already** registered in `src/lib/icon-map.ts` (no icon-map edit needed; an unregistered name silently falls back to the Server icon via `resolveIcon`).
+In `src/config/services-data.ts`, in the `my-projects` section array, add an entry. NOTE: `healthUrl` is **required** by `ServiceDefinition` (no `?`). For a relative portal sub-route, `getInternalUrl` already special-cases `url.startsWith("/")` to use the relative path directly; set `healthUrl` to the portal's own origin so the health check passes. Use icon `CandlestickChart` — it is **already** registered in `src/lib/icon-map.ts` and already used by the `wife-mt4-observer` card, so no icon-map edit is needed. (An unregistered icon name renders an empty `<span>`, so picking a registered name matters.)
 
 ```typescript
   {
@@ -1075,7 +1075,7 @@ Then `rm -f .vault-writing-lock`.
 - **Corrections applied after reading real source (post-draft):**
   - Task 8 auth: dropped speculative `getServerConfig()` — auth is enforced by `src/middleware.ts` globally; `/serenity` is protected automatically (verified). Page imports no auth helper.
   - Task 8 type: `CatalystList` now uses imported `Ledger` type (added to the page import) instead of inline `import(...)`.
-  - Task 10 icon: use `CandlestickChart` (already in `icon-map.ts`) not `LineChart` (would need an icon-map edit + falls back to Server icon if missed). No icon-map change needed.
+  - Task 10 icon: use `CandlestickChart` (already in `icon-map.ts`, already used by wife-mt4-observer card) not `LineChart` (unregistered → renders empty span). No icon-map change needed.
   - Task 10 service card: `healthUrl` is required by `ServiceDefinition`; set to portal origin. `getInternalUrl` special-cases relative `/serenity` url.
 - **Known soft spots flagged for executor:**
   - The "recent window" cutoff in Task 8 uses a literal `2026-05-15`; acceptable for v1 (charts show recent activity) but a future refinement could derive it from `last_distilled_ts` minus N days.
