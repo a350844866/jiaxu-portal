@@ -1,4 +1,4 @@
-import type { Verdict } from "@/lib/serenity-reader"
+import type { Verdict } from "@/lib/serenity-pure"
 
 const VERDICT_COLOR: Record<string, string> = {
   兑现: "#34d399", 落空: "#f87171", 待核: "#fbbf24", 不可证伪: "#71717a", 归因不稳: "#a78bfa",

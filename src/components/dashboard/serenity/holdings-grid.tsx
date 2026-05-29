@@ -1,4 +1,4 @@
-import type { Position } from "@/lib/serenity-reader"
+import type { Position } from "@/lib/serenity-pure"
 
 const STANCE_TONE: Record<string, string> = {
   新开: "border-emerald-500/40 bg-emerald-500/5 text-emerald-200",

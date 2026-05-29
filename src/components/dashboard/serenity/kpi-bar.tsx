@@ -1,4 +1,4 @@
-import type { Ledger } from "@/lib/serenity-reader"
+import type { Ledger } from "@/lib/serenity-pure"
 import { TriangleAlert } from "lucide-react"
 
 export function KpiBar({ ledger, tweetTotal }: { ledger: Ledger; tweetTotal: number }) {

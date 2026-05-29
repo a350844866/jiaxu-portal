@@ -1,5 +1,5 @@
 "use client"
-import { filterTweets, type Tweet } from "@/lib/serenity-reader"
+import { filterTweets, type Tweet } from "@/lib/serenity-pure"
 import { X } from "lucide-react"
 
 export function TickerDrawer({ ticker, tweets, onClose }: { ticker: string | null; tweets: Tweet[]; onClose: () => void }) {

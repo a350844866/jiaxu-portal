@@ -1,6 +1,6 @@
 "use client"
 import { useState } from "react"
-import type { Position, Tweet } from "@/lib/serenity-reader"
+import type { Position, Tweet } from "@/lib/serenity-pure"
 import { HoldingsGrid } from "./holdings-grid"
 import { TickerDrawer } from "./ticker-drawer"
 

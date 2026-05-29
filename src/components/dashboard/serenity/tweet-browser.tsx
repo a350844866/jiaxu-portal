@@ -1,6 +1,6 @@
 "use client"
 import { useMemo, useState } from "react"
-import { filterTweets, type Tweet } from "@/lib/serenity-reader"
+import { filterTweets, type Tweet } from "@/lib/serenity-pure"
 
 const PAGE = 30
 
