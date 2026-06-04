@@ -1,10 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Activity, Bot, FileText, LineChart, MessageSquare, TrendingUp } from "lucide-react"
+import { Activity, Bot, FileText, Laptop, LineChart, MessageSquare, TrendingUp } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-type SystemName = "mt4" | "ibkr" | "quant-flow" | "auto-content" | "interactive" | "other"
+type SystemName = "mt4" | "ibkr" | "quant-flow" | "auto-content" | "interactive" | "other" | "mbp"
 
 interface SystemSummary {
   system: SystemName
@@ -37,10 +37,11 @@ const LABELS: Record<SystemName, { name: string; icon: typeof Bot; tone: string 
   "quant-flow":   { name: "quant-flow",     icon: TrendingUp,    tone: "from-violet-500/15 to-violet-500/0 border-violet-500/25" },
   "auto-content": { name: "auto-content",   icon: FileText,      tone: "from-orange-500/15 to-orange-500/0 border-orange-500/25" },
   interactive:    { name: "Interactive",    icon: MessageSquare, tone: "from-emerald-500/15 to-emerald-500/0 border-emerald-500/25" },
+  mbp:            { name: "MBP (公司)",     icon: Laptop,        tone: "from-rose-500/15 to-rose-500/0 border-rose-500/25"      },
   other:          { name: "其他",            icon: Activity,      tone: "from-zinc-500/15 to-zinc-500/0 border-zinc-500/25"     },
 }
 
-const VISIBLE: SystemName[] = ["mt4", "ibkr", "quant-flow", "auto-content", "interactive"]
+const VISIBLE: SystemName[] = ["mt4", "ibkr", "quant-flow", "auto-content", "interactive", "mbp"]
 
 function fmtTokens(n: number): string {
   if (n >= 1e9) return (n / 1e9).toFixed(2) + "B"
@@ -120,7 +121,7 @@ export function TokenCard() {
         )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {VISIBLE.map((s) => {
           const row = data?.systems.find((x) => x.system === s)
           const meta = LABELS[s]

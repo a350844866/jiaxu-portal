@@ -71,7 +71,7 @@ function codexWeeklyResetUtc(): Date {
   return new Date(anchor.getTime() + weeksPassed * weekMs)
 }
 
-export type SystemName = "mt4" | "ibkr" | "quant-flow" | "auto-content" | "interactive" | "other"
+export type SystemName = "mt4" | "ibkr" | "quant-flow" | "auto-content" | "interactive" | "other" | "mbp"
 
 export interface SystemSummary {
   system: SystemName
@@ -241,6 +241,40 @@ function summarizeQuantFlowTracer(entries: QuantFlowTracerEntry[]): BucketUsageS
   return acc
 }
 
+/** 把某个 host 的多 system_name 行聚合成单个 SystemSummary（用于 MBP 卡）。*/
+function buildHostSummary(rows: mysql.RowDataPacket[], host: SystemName): SystemSummary {
+  const acc: SystemSummary = {
+    system: host,
+    today_input: 0,
+    today_output: 0,
+    today_cache_read: 0,
+    today_cache_create: 0,
+    today_cost_usd: 0,
+    today_total_tokens: 0,
+    month_cost_usd: 0,
+    last1h_cost_usd: 0,
+    last1h_total_tokens: 0,
+    last_event_ts: null,
+  }
+  for (const r of rows) {
+    acc.today_input += toNumber(r.today_input)
+    acc.today_output += toNumber(r.today_output)
+    acc.today_cache_read += toNumber(r.today_cache_read)
+    acc.today_cache_create += toNumber(r.today_cache_create)
+    acc.today_cost_usd += toNumber(r.today_cost_usd)
+    acc.month_cost_usd += toNumber(r.month_cost_usd)
+    acc.last1h_cost_usd += toNumber(r.last1h_cost_usd)
+    acc.last1h_total_tokens += toNumber(r.last1h_total_tokens)
+    const ts = r.last_event_ts
+      ? new Date(r.last_event_ts as string | Date).toISOString()
+      : null
+    if (ts && (!acc.last_event_ts || ts > acc.last_event_ts)) acc.last_event_ts = ts
+  }
+  acc.today_total_tokens =
+    acc.today_input + acc.today_output + acc.today_cache_read + acc.today_cache_create
+  return acc
+}
+
 export async function getUsageLive(): Promise<UsageLive> {
   const p = getPool()
   const todayUtc = beijingTodayUtc().toISOString().slice(0, 19).replace("T", " ")
@@ -249,6 +283,7 @@ export async function getUsageLive(): Promise<UsageLive> {
     `
     SELECT
       system_name,
+      host,
       SUM(CASE WHEN ts >= ?                                  THEN input_tokens         ELSE 0 END) AS today_input,
       SUM(CASE WHEN ts >= ?                                  THEN output_tokens        ELSE 0 END) AS today_output,
       SUM(CASE WHEN ts >= ?                                  THEN cache_read_tokens    ELSE 0 END) AS today_cache_read,
@@ -262,14 +297,16 @@ export async function getUsageLive(): Promise<UsageLive> {
       MAX(ts) AS last_event_ts
     FROM usage_events
     WHERE ts >= LEAST(?, UTC_TIMESTAMP() - INTERVAL 1 HOUR)
-    GROUP BY system_name
+    GROUP BY system_name, host
     `,
     // placeholders: today_input, today_output, today_cache_read, today_cache_create, today_cost_usd, month_cost_usd, WHERE
     [todayUtc, todayUtc, todayUtc, todayUtc, todayUtc, monthUtc, monthUtc],
   )
 
+  const homeRows = rows.filter((r) => String(r.host) === "home")
+  const mbpRows = rows.filter((r) => String(r.host) === "mbp")
   const bySystem = new Map<string, mysql.RowDataPacket>()
-  for (const r of rows) bySystem.set(String(r.system_name), r)
+  for (const r of homeRows) bySystem.set(String(r.system_name), r)
 
   const systems: SystemSummary[] = ALL_SYSTEMS.map((s) => {
     const r = bySystem.get(s)
@@ -315,6 +352,10 @@ export async function getUsageLive(): Promise<UsageLive> {
     // Codex 无 cache 概念,保持 today_cache_read / today_cache_create 不变
     mergeBucketUsage(qf, quantFlowCodex)
   }
+
+  // MBP（公司机器）本地 Claude Code：host='mbp' 的所有 system_name 聚成一桶单列。
+  // 家服系统卡已过滤 host='home'，两者互斥，totals 对 systems 聚合每行恰好计一次。
+  systems.push(buildHostSummary(mbpRows, "mbp"))
 
   const totals = systems.reduce(
     (acc, s) => {
