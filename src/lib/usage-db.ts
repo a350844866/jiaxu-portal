@@ -303,8 +303,10 @@ export async function getUsageLive(): Promise<UsageLive> {
     [todayUtc, todayUtc, todayUtc, todayUtc, todayUtc, monthUtc, monthUtc],
   )
 
+  // 分区必须完备：home 一桶，其余全部归 MBP 桶（目前 mbp 是唯一远端 root，
+  // 即使将来 watcher 误配出第三个 host 也不会从 totals 里凭空蒸发——Codex review 2026-06-03）。
   const homeRows = rows.filter((r) => String(r.host) === "home")
-  const mbpRows = rows.filter((r) => String(r.host) === "mbp")
+  const mbpRows = rows.filter((r) => String(r.host) !== "home")
   const bySystem = new Map<string, mysql.RowDataPacket>()
   for (const r of homeRows) bySystem.set(String(r.system_name), r)
 
@@ -754,7 +756,7 @@ export async function getUsageBreakdown(hours = 24): Promise<BreakdownPoint[]> {
     `
     SELECT
       DATE_FORMAT(DATE_ADD(ts, INTERVAL -MINUTE(ts) MINUTE), '%Y-%m-%dT%H:00:00Z') AS hour_utc,
-      system_name AS system,
+      CASE WHEN host = 'home' THEN system_name ELSE 'mbp' END AS system,
       model,
       SUM(input_tokens + output_tokens + cache_read_tokens + cache_create_tokens) AS total_tokens,
       SUM(cost_usd) AS cost_usd
