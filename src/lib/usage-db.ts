@@ -531,6 +531,7 @@ const OPENAI_PRICING: Record<string, { input: number; cached: number; output: nu
 const DEFAULT_PRICING = { input: 2.50, cached: 1.25, output: 10.00 }
 
 interface CodexSessionTokens {
+  id: string // thread id —— 跨源去重用
   model: string
   input_tokens: number
   cached_input_tokens: number
@@ -583,8 +584,11 @@ function codexSources(): CodexSource[] {
 function readCodexSessionsFrom(src: CodexSource, tmpTag: string, sinceEpoch: number): CodexSessionTokens[] {
   interface ThreadRow { id: string; model: string; created_at: number; tokens_used: number }
   let threads: ThreadRow[] = []
+  const tmpBase = path.join(os.tmpdir(), `codex_state_${tmpTag}.sqlite`)
   try {
-    const tmpBase = path.join(os.tmpdir(), `codex_state_${tmpTag}.sqlite`)
+    // 先清掉上次失败残留的 sidecar，避免把旧 -wal/-shm 跟新 db 一起 open 造成不一致
+    try { fs.unlinkSync(tmpBase + "-wal") } catch {}
+    try { fs.unlinkSync(tmpBase + "-shm") } catch {}
     fs.copyFileSync(src.dbPath, tmpBase)
     const walSrc = src.dbPath + "-wal"
     const shmSrc = src.dbPath + "-shm"
@@ -596,9 +600,13 @@ function readCodexSessionsFrom(src: CodexSource, tmpTag: string, sinceEpoch: num
        FROM threads WHERE created_at >= ? ORDER BY created_at`
     ).all(sinceEpoch) as ThreadRow[]
     db.close()
+  } catch {
+    return []
+  } finally {
+    // 无论成功失败都清 sidecar（失败路径也清，否则下次 open 旧 sidecar）
     try { fs.unlinkSync(tmpBase + "-wal") } catch {}
     try { fs.unlinkSync(tmpBase + "-shm") } catch {}
-  } catch { return [] }
+  }
 
   if (threads.length === 0) return []
 
@@ -613,6 +621,7 @@ function readCodexSessionsFrom(src: CodexSource, tmpTag: string, sinceEpoch: num
       // —— 否则 COALESCE(model,'unknown') 会在首页造一行 tokens 全 0 的 "unknown" 幽灵桶
       if (t.tokens_used === 0) continue
       sessions.push({
+        id: t.id,
         model: t.model,
         input_tokens: t.tokens_used,
         cached_input_tokens: 0,
@@ -632,10 +641,16 @@ function listCodexSessions(): CodexSessionTokens[] {
   const monthEpoch = Math.floor(beijingMonthStartUtc().getTime() / 1000)
   const sinceEpoch = Math.min(weeklyEpoch, codexWeeklyEpoch, monthEpoch)
 
-  // 各源 thread id 跨机天然不重(session 只在一台机器跑)，直接 concat 不去重。
+  // 各源 thread id 跨机天然不重(session 只在一台机器跑)，但仍按 id 去重兜底：
+  // 防误配同一目录两次 / home 数据被拷进 MBP 副本等情况下的双计(Codex review 2026-06-03)。
   const out: CodexSessionTokens[] = []
+  const seen = new Set<string>()
   codexSources().forEach((src, i) => {
-    out.push(...readCodexSessionsFrom(src, String(i), sinceEpoch))
+    for (const s of readCodexSessionsFrom(src, String(i), sinceEpoch)) {
+      if (s.id && seen.has(s.id)) continue
+      if (s.id) seen.add(s.id)
+      out.push(s)
+    }
   })
   return out
 }
@@ -776,7 +791,7 @@ function parseCodexJsonl(sessionsDir: string, thread: { id: string; created_at: 
     }
 
     if (!lastUsage) return null
-    return { model, ...lastUsage, created_at: thread.created_at, cwd }
+    return { id: thread.id, model, ...lastUsage, created_at: thread.created_at, cwd }
   } catch {
     return null
   }
