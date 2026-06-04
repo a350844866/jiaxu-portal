@@ -552,24 +552,42 @@ function computeCodexCost(model: string, input: number, cached: number, output: 
  * 调用方再按自己窗口过滤。
  * 返回按 session 粒度的数组；调用方可按 cwd / model / ts 自行聚合。
  */
-function listCodexSessions(): CodexSessionTokens[] {
-  const sessionsDir = process.env.CODEX_SESSIONS_PATH ||
-    path.join(process.env.HOME || "/home/jiaxu", ".codex/sessions")
-  const dbPath = process.env.CODEX_DB_PATH ||
-    path.join(process.env.HOME || "/home/jiaxu", ".codex/state_5.sqlite")
+interface CodexSource { dbPath: string; sessionsDir: string }
 
-  const weeklyEpoch = Math.floor(weeklyResetUtc().getTime() / 1000)
-  const codexWeeklyEpoch = Math.floor(codexWeeklyResetUtc().getTime() / 1000)
-  const monthEpoch = Math.floor(beijingMonthStartUtc().getTime() / 1000)
-  const sinceEpoch = Math.min(weeklyEpoch, codexWeeklyEpoch, monthEpoch)
+/** Codex 数据源列表：home 本地 + 可选远端(公司 MBP rsync 上来的 ~/.codex 副本)。
+ * CODEX_REMOTE_DIRS = JSON [{"dir":"/data/codex-mbp"}]，dir 下需有 state_5.sqlite + sessions/。
+ * 同一 OpenAI 账号 → 各源 session 直接 concat 进同一配额组(merge)。不设时仅 home(向后兼容)。*/
+function codexSources(): CodexSource[] {
+  const home = process.env.HOME || "/home/jiaxu"
+  const sources: CodexSource[] = [{
+    dbPath: process.env.CODEX_DB_PATH || path.join(home, ".codex/state_5.sqlite"),
+    sessionsDir: process.env.CODEX_SESSIONS_PATH || path.join(home, ".codex/sessions"),
+  }]
+  const raw = (process.env.CODEX_REMOTE_DIRS || "").trim()
+  if (raw) {
+    try {
+      for (const item of JSON.parse(raw)) {
+        const dir = item && item.dir ? String(item.dir) : ""
+        if (dir) sources.push({
+          dbPath: path.join(dir, "state_5.sqlite"),
+          sessionsDir: path.join(dir, "sessions"),
+        })
+      }
+    } catch { /* 配置坏忽略，至少 home 源仍可用 */ }
+  }
+  return sources
+}
 
+/** 从单个 Codex 源读 session 明细。tmpTag 区分各源的 sqlite 临时副本，避免并发覆盖。
+ * 整个读取 try/catch 兜底返回 []——单源损坏(如 MBP sqlite rsync 撕裂)不拖垮其它源。*/
+function readCodexSessionsFrom(src: CodexSource, tmpTag: string, sinceEpoch: number): CodexSessionTokens[] {
   interface ThreadRow { id: string; model: string; created_at: number; tokens_used: number }
   let threads: ThreadRow[] = []
   try {
-    const tmpBase = path.join(os.tmpdir(), "codex_state_5.sqlite")
-    fs.copyFileSync(dbPath, tmpBase)
-    const walSrc = dbPath + "-wal"
-    const shmSrc = dbPath + "-shm"
+    const tmpBase = path.join(os.tmpdir(), `codex_state_${tmpTag}.sqlite`)
+    fs.copyFileSync(src.dbPath, tmpBase)
+    const walSrc = src.dbPath + "-wal"
+    const shmSrc = src.dbPath + "-shm"
     if (fs.existsSync(walSrc)) fs.copyFileSync(walSrc, tmpBase + "-wal")
     if (fs.existsSync(shmSrc)) fs.copyFileSync(shmSrc, tmpBase + "-shm")
     const db = new Database(tmpBase, { readonly: true })
@@ -586,7 +604,7 @@ function listCodexSessions(): CodexSessionTokens[] {
 
   const sessions: CodexSessionTokens[] = []
   for (const t of threads) {
-    const detail = parseCodexJsonl(sessionsDir, t)
+    const detail = parseCodexJsonl(src.sessionsDir, t)
     if (detail) {
       sessions.push(detail)
     } else {
@@ -606,6 +624,20 @@ function listCodexSessions(): CodexSessionTokens[] {
     }
   }
   return sessions
+}
+
+function listCodexSessions(): CodexSessionTokens[] {
+  const weeklyEpoch = Math.floor(weeklyResetUtc().getTime() / 1000)
+  const codexWeeklyEpoch = Math.floor(codexWeeklyResetUtc().getTime() / 1000)
+  const monthEpoch = Math.floor(beijingMonthStartUtc().getTime() / 1000)
+  const sinceEpoch = Math.min(weeklyEpoch, codexWeeklyEpoch, monthEpoch)
+
+  // 各源 thread id 跨机天然不重(session 只在一台机器跑)，直接 concat 不去重。
+  const out: CodexSessionTokens[] = []
+  codexSources().forEach((src, i) => {
+    out.push(...readCodexSessionsFrom(src, String(i), sinceEpoch))
+  })
+  return out
 }
 
 /**

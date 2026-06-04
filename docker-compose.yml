@@ -24,6 +24,8 @@ services:
       - USAGE_DB_NAME=${USAGE_DB_NAME}
       - CODEX_DB_PATH=/data/codex-home/state_5.sqlite
       - CODEX_SESSIONS_PATH=/data/codex-home/sessions
+      # 远端 Codex 源(公司 MBP rsync 上来的 ~/.codex 副本)；同一 OpenAI 账号并入配额组
+      - CODEX_REMOTE_DIRS=[{"dir":"/data/codex-mbp"}]
       - QUANT_FLOW_LLM_CALLS_PATH=/data/quant-flow-llm-calls
       - PORTAL_STATE_DIR=/data/portal-state
       - VAULT_DIR=/data/vault
@@ -45,6 +47,7 @@ services:
       - ./data/surge-rules:/data/surge-rules
       - ./data/auth:/data/auth
       - /home/jiaxu/.codex:/data/codex-home:ro
+      - /data/claude-usage/remote-codex/mbp:/data/codex-mbp:ro
       - /programHost/vibe-coding/quant-flow/logs/llm_calls:/data/quant-flow-llm-calls:ro
       - /data/portal-state:/data/portal-state:ro
       # vault mount for TodoCard — reads TODO.md (potentially other top-level files later)
