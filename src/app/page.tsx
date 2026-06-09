@@ -2,7 +2,6 @@ import { services } from "@/config/services-data"
 import { checkAllServices } from "@/lib/health-checker"
 import { Header } from "@/components/layout/header"
 import { ServiceGrid } from "@/components/dashboard/service-grid"
-import { TokenCard } from "@/components/dashboard/token-card"
 import { RateLimitCard } from "@/components/dashboard/rate-limit-card"
 import { ResourceRail } from "@/components/dashboard/resource-rail"
 import { MacMiniRail } from "@/components/dashboard/mac-mini-rail"
@@ -23,7 +22,6 @@ export default async function Home() {
         <ResourceRail />
       </div>
       <MacMiniRail />
-      <TokenCard />
       <RateLimitCard />
       <AINewsCard />
       <ZhihuHotCard />
