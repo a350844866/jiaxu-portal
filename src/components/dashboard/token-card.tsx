@@ -41,7 +41,8 @@ const LABELS: Record<SystemName, { name: string; icon: typeof Bot; tone: string 
   other:          { name: "其他",            icon: Activity,      tone: "from-zinc-500/15 to-zinc-500/0 border-zinc-500/25"     },
 }
 
-const VISIBLE: SystemName[] = ["mt4", "ibkr", "quant-flow", "auto-content", "interactive", "mbp"]
+// mt4 / ibkr 已停运下线 (2026-06-09),从消耗卡移除其 tile;如恢复交易把 "mt4"/"ibkr" 加回即可
+const VISIBLE: SystemName[] = ["quant-flow", "auto-content", "interactive", "mbp"]
 
 function fmtTokens(n: number): string {
   if (n >= 1e9) return (n / 1e9).toFixed(2) + "B"
