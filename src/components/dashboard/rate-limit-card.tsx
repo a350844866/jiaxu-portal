@@ -34,6 +34,7 @@ interface RateLimitData {
 }
 
 const MODEL_META: Record<string, { name: string; icon: typeof Zap; tone: string }> = {
+  fable:      { name: "Fable",     icon: Sparkles, tone: "from-amber-500/15 to-amber-500/0 border-amber-500/25" },
   opus:       { name: "Opus",      icon: Sparkles, tone: "from-violet-500/15 to-violet-500/0 border-violet-500/25" },
   sonnet:     { name: "Sonnet",    icon: Zap,      tone: "from-blue-500/15 to-blue-500/0 border-blue-500/25" },
   haiku:      { name: "Haiku",     icon: Cpu,      tone: "from-teal-500/15 to-teal-500/0 border-teal-500/25" },

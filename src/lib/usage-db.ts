@@ -410,9 +410,10 @@ export interface RateLimitData {
   groups: ProductGroup[]
 }
 
-type ClaudeTier = "opus" | "sonnet" | "haiku"
+type ClaudeTier = "fable" | "opus" | "sonnet" | "haiku"
 
 function classifyTier(model: string): ClaudeTier {
+  if (model.includes("fable")) return "fable"
   if (model.includes("opus")) return "opus"
   if (model.includes("haiku")) return "haiku"
   return "sonnet"
@@ -480,7 +481,7 @@ export async function getRateLimitUsage(): Promise<RateLimitData> {
   // ~/.claude/sessions jsonl 按 cwd 归类并按 Anthropic API rate 算 cost_usd），
   // 不要再从 tracer JSONL 追加一次——那会把 quant-flow 容器内每次 claude -p 算两遍。
 
-  const ALL_TIERS: ClaudeTier[] = ["opus", "sonnet", "haiku"]
+  const ALL_TIERS: ClaudeTier[] = ["fable", "opus", "sonnet", "haiku"]
   const claudeModels: ModelUsage[] = ALL_TIERS.map(
     (t) => byTier.get(t) ?? {
       provider: "claude", model: t,
