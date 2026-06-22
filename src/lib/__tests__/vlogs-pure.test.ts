@@ -47,7 +47,7 @@ describe("buildQueryLogsQL", () => {
 
 it("buildHealthLogsQL", () => {
   expect(buildHealthLogsQL("1h")).toBe(
-    '_time:1h ("exceptionHandler" OR "Got unchecked and undeclared exception") | stats by (_stream) count() c'
+    '_time:1h ("ERROR" OR "exceptionHandler") | stats by (_stream) count() c'
   )
 })
 

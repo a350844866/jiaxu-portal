@@ -34,7 +34,7 @@ export function LogHealthCard() {
         <div className="flex items-center gap-2">
           <ScrollText className="h-4 w-4 text-zinc-400" />
           <span className="text-sm font-medium text-zinc-200">生产日志 · 错误一览</span>
-          <span className="text-xs text-zinc-500">近1h · 未处理异常(绿≠全健康)</span>
+          <span className="text-xs text-zinc-500">近1h · ERROR/异常(绿≠全健康)</span>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={load} aria-label="刷新" className="text-zinc-500 hover:text-zinc-300">

@@ -27,8 +27,9 @@ export class VlogsError extends Error {
 
 const ERROR_PRESET =
   '("ERROR" OR "Exception" OR "Caused by" OR "Got unchecked and undeclared exception" OR "exceptionHandler" OR "FATAL")'
-const HEALTH_SIGNAL =
-  '("exceptionHandler" OR "Got unchecked and undeclared exception")'
+// 健康信号:ERROR 级日志(含被 catch 后记成 ERROR 的 SQLException 等真 bug)+ HTTP 未处理异常。
+// 圈到 28 个 Nacos 服务后 ERROR 基线极低(实测全 28 服务近 1h 仅个位数),故可用 ERROR 而不刷屏。
+const HEALTH_SIGNAL = '("ERROR" OR "exceptionHandler")'
 
 // 拒绝管道符与控制字符;空格/连字符/中文等照常允许(都在引号短语内,安全)
 const KEYWORD_DENY = new RegExp("[|\\u0000-\\u001f]")
