@@ -14,6 +14,7 @@ services:
       - SURGE_RULES_DIR=/data/surge-rules
       - AUTH_DIR=/data/auth
       - NACOS_BACKEND_URL=${NACOS_BACKEND_URL}
+      - VLOGS_BASE_URL=${VLOGS_BASE_URL}
       - NACOS_PROXY_SECRET=${NACOS_PROXY_SECRET}
       - PROXIED_HOSTS=${PROXIED_HOSTS}
       - PORTAL_ORIGIN=${PORTAL_ORIGIN}
