@@ -14,6 +14,7 @@ import { useHiddenServices } from "@/hooks/use-hidden-services"
 import { iconMap } from "@/lib/icon-map"
 import { Pencil, Check } from "lucide-react"
 import { SurgeRuleEditor } from "./surge-rule-editor"
+import { LogHealthCard } from "./log-health-card"
 
 interface ServiceGridProps {
   services: ServiceDefinition[]
@@ -130,7 +131,7 @@ export function ServiceGrid({ services, initialHealth }: ServiceGridProps) {
           </div>
 
           {/* Surge rule editor in company section */}
-          {cat.id === "company" && <SurgeRuleEditor />}
+          {cat.id === "company" && (<><SurgeRuleEditor /><LogHealthCard /></>)}
         </section>
       ))}
     </div>

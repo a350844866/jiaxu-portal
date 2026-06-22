@@ -10,7 +10,6 @@ import { TodoCard } from "@/components/dashboard/todo-card"
 import { AINewsCard } from "@/components/dashboard/ai-news-card"
 import { N8nCard } from "@/components/dashboard/n8n-card"
 import { ZhihuHotCard } from "@/components/dashboard/zhihu-hot-card"
-import { LogHealthCard } from "@/components/dashboard/log-health-card"
 
 export const revalidate = 30
 
@@ -26,7 +25,6 @@ export default async function Home() {
       <MacMiniRail />
       <TokenCard />
       <RateLimitCard />
-      <LogHealthCard />
       <AINewsCard />
       <ZhihuHotCard />
       <N8nCard />
