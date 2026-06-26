@@ -7,15 +7,19 @@ import { LOG_GROUPS } from "@/config/log-services"
 export function LogHealthCard() {
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [err, setErr] = useState<string | null>(null)
+  const [loginHref, setLoginHref] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
     setErr(null)
+    setLoginHref(null)
     try {
       const res = await fetch("/api/logs/health?window=1h")
       const data = await res.json()
-      if (!res.ok) setErr(data.error ?? "日志源暂不可达")
+      if (res.status === 401)
+        setLoginHref(`/auth/login?redirect=${encodeURIComponent(window.location.href)}`)
+      else if (!res.ok) setErr(data.error ?? "日志源暂不可达")
       else setCounts(data.counts ?? {})
     } catch {
       setErr("日志源暂不可达")
@@ -46,7 +50,17 @@ export function LogHealthCard() {
         </div>
       </header>
 
-      {err ? (
+      {loginHref ? (
+        <div className="mt-2 flex items-center gap-2 text-xs">
+          <span className="text-zinc-500">未登录 · 生产日志需登录查看</span>
+          <Link
+            href={loginHref}
+            className="rounded border border-zinc-700 px-2 py-0.5 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+          >
+            点此登录 →
+          </Link>
+        </div>
+      ) : err ? (
         <div className="mt-2 text-xs text-rose-400">{err}</div>
       ) : (
         <div className="mt-3 space-y-2">

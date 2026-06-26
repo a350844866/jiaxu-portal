@@ -25,17 +25,22 @@ export function LogsPanel() {
   const [lines, setLines] = useState<LogLine[]>([])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [loginHref, setLoginHref] = useState<string | null>(null)
 
   const run = useCallback(async () => {
     setLoading(true)
     setErr(null)
+    setLoginHref(null)
     const q = new URLSearchParams({ service, window: win, errorOnly: errorOnly ? "1" : "0" })
     if (keyword.trim()) q.set("keyword", keyword.trim())
     router.replace(`/logs?${q.toString()}`, { scroll: false })
     try {
       const res = await fetch(`/api/logs?${q.toString()}`)
       const data = await res.json()
-      if (!res.ok) {
+      if (res.status === 401) {
+        setLoginHref(`/auth/login?redirect=${encodeURIComponent(window.location.href)}`)
+        setLines([])
+      } else if (!res.ok) {
         setErr(data.error ?? "查询失败")
         setLines([])
       } else {
@@ -115,9 +120,21 @@ export function LogsPanel() {
         </button>
       </div>
 
+      {loginHref && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-zinc-500">未登录 · 生产日志需登录查看</span>
+          <a
+            href={loginHref}
+            className="rounded border border-zinc-700 px-2 py-0.5 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+          >
+            点此登录 →
+          </a>
+        </div>
+      )}
+
       {err && <div className="text-sm text-rose-400">{err}</div>}
 
-      {!err && lines.length === 0 && !loading && (
+      {!err && !loginHref && lines.length === 0 && !loading && (
         <div className="text-sm text-zinc-500">该条件下无日志。</div>
       )}
 
