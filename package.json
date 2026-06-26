@@ -17,6 +17,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cronstrue": "^3.14.0",
+    "geist": "^1.7.1",
     "jose": "^6.2.2",
     "lucide-react": "^1.7.0",
     "mysql2": "^3.22.0",

@@ -1,16 +1,10 @@
 import type { Metadata } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
+// 自托管 geist 包(next/font/local,字体文件随包打进 bundle),不在 build 期
+// 向 Google Fonts 拉取——家服对 fonts.googleapis.com 的出口偶发被重置会让
+// next/font/google 直接构建失败(SSL EOF)。变量名与原 --font-geist-* 一致。
+import { GeistSans } from "geist/font/sans"
+import { GeistMono } from "geist/font/mono"
 import "./globals.css"
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-})
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-})
 
 export const metadata: Metadata = {
   title: "Jiaxu Portal",
@@ -25,7 +19,7 @@ export default function RootLayout({
   return (
     <html
       lang="zh-CN"
-      className={`${geistSans.variable} ${geistMono.variable} dark h-full`}
+      className={`${GeistSans.variable} ${GeistMono.variable} dark h-full`}
     >
       <body className="min-h-full bg-background text-foreground">
         {children}
