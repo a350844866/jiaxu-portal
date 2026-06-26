@@ -45,10 +45,25 @@ describe("buildQueryLogsQL", () => {
   })
 })
 
-it("buildHealthLogsQL", () => {
-  expect(buildHealthLogsQL("1h")).toBe(
-    '_time:1h ("ERROR" OR "exceptionHandler") | stats by (_stream) count() c'
-  )
+describe("buildHealthLogsQL", () => {
+  it("基础信号 + 已知后台噪声剔除", () => {
+    expect(buildHealthLogsQL("1h")).toBe(
+      '_time:1h ("ERROR" OR "exceptionHandler") -"create connection SQLException" -"CreateConnectionThread" -"ReconnectTimerTask" | stats by (_stream) count() c'
+    )
+  })
+  it("剔除 8921 后台建连(两种日志格式) + Dubbo 元数据 ghost 重连噪声", () => {
+    const q = buildHealthLogsQL("1h")
+    expect(q).toContain('-"create connection SQLException"')
+    expect(q).toContain('-"CreateConnectionThread"')
+    expect(q).toContain('-"ReconnectTimerTask"')
+  })
+  it("保留真信号/金丝雀:不剔 slow sql / execute error / CommunicationsException / GetConnectionTimeout", () => {
+    const q = buildHealthLogsQL("1h")
+    expect(q).not.toContain("slow sql")
+    expect(q).not.toContain("execute error")
+    expect(q).not.toContain("CommunicationsException")
+    expect(q).not.toContain("GetConnectionTimeout")
+  })
 })
 
 it("containerFromStream 提取容器名(剥 pod/container id)", () => {

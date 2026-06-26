@@ -31,6 +31,23 @@ const ERROR_PRESET =
 // 圈到 28 个 Nacos 服务后 ERROR 基线极低(实测全 28 服务近 1h 仅个位数),故可用 ERROR 而不刷屏。
 const HEALTH_SIGNAL = '("ERROR" OR "exceptionHandler")'
 
+// 已知后台噪声短语,从健康红绿信号里精确剔除(均为纯后台线程、零请求级影响,见 [[incident-2026-06-24-8921连接池请求级升级]] §19):
+//  - "create connection SQLException": Druid 后台 CreateConnectionThread 建连撞 8921 丢 SYN(Spring Boot logback 格式,线程 [reate-*])
+//  - "CreateConnectionThread"        : 同上,另一种日志格式(eladmin 等 `method:...DruidDataSource$CreateConnectionThread.run`)
+//  - "ReconnectTimerTask"            : Dubbo 后台重连定时器(HashedWheelTimer)对死 provider 的 ghost 重连(data-inspection-web 等)
+//      ↳ 为何用 ReconnectTimerTask 而非更窄的 "DubboMetadataService":被计数的 ERROR 行就是
+//        `method:...ReconnectTimerTask.doTask(...)`,DubboMetadataService 只落在分离的 stack 行(实测 -"DubboMetadataService" 不降噪);
+//        且它永远是后台重连遥测——provider 真挂了业务调用会在【请求线程】报 RpcException/exceptionHandler(不在剔除列表→照常红),不会被这条埋掉。
+// 刻意不剔(=真信号/金丝雀,且本就不含上述短语→自然透传):
+//   slow sql(真慢查询) / execute error+CommunicationsException(请求·Dubbo 线程,在途断连金丝雀) /
+//   GetConnectionTimeoutException+CannotGetJdbcConnection(8921 真升级请求级,必须报红) / exceptionHandler(HTTP 未处理异常)。
+// ⚠ 这是 signal AND NOT noise:加剔除短语前务必确认它不会内嵌在某真信号行里(否则会误埋)。
+const HEALTH_NOISE_PHRASES = [
+  "create connection SQLException",
+  "CreateConnectionThread",
+  "ReconnectTimerTask",
+]
+
 // 拒绝管道符与控制字符;空格/连字符/中文等照常允许(都在引号短语内,安全)
 const KEYWORD_DENY = new RegExp("[|\\u0000-\\u001f]")
 
@@ -57,7 +74,9 @@ export function buildQueryLogsQL(opts: {
 }
 
 export function buildHealthLogsQL(window: string): string {
-  return `_time:${window} ${HEALTH_SIGNAL} | stats by (_stream) count() c`
+  // 用 quoteLogsQLString 渲染(自动转义 \ 与 "、拒非法字符),与 keyword 路径一致、未来加短语更安全
+  const exclude = HEALTH_NOISE_PHRASES.map((p) => `-${quoteLogsQLString(p)}`).join(" ")
+  return `_time:${window} ${HEALTH_SIGNAL} ${exclude} | stats by (_stream) count() c`
 }
 
 /** 从 _stream 路径 `.../containers/<pod>_<ns>_<container>-<id>.log` 提取容器名。 */
