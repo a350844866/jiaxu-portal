@@ -29,6 +29,12 @@ interface UsageLive {
     month_cost_usd: number
     last1h_total_tokens: number
   }
+  zhanzhi: {
+    today_cost_usd: number
+    mine_cost: number
+    pct_of_total: number | null
+    pct_mine_of_total: number | null
+  }
 }
 
 const LABELS: Record<SystemName, { name: string; icon: typeof Bot; tone: string }> = {
@@ -116,6 +122,14 @@ export function TokenCard() {
         {data && (
           <div className="flex gap-4 text-xs text-zinc-500 tabular-nums">
             <span>今日合计 <span className="text-zinc-200">{fmtCost(data.totals.today_cost_usd)}</span></span>
+            {data.zhanzhi && (
+              <span>
+                Claude 池 我 <span className="text-zinc-200">{fmtCost(data.zhanzhi.mine_cost)}</span>
+                {data.zhanzhi.pct_mine_of_total != null ? <span className="text-zinc-600"> ({data.zhanzhi.pct_mine_of_total}%)</span> : null}
+                {" · 展志 "}<span className="text-zinc-200">{fmtCost(data.zhanzhi.today_cost_usd)}</span>
+                {data.zhanzhi.pct_of_total != null ? <span className="text-zinc-600"> ({data.zhanzhi.pct_of_total}%)</span> : null}
+              </span>
+            )}
             <span>本月 <span className="text-zinc-200">{fmtCost(data.totals.month_cost_usd)}</span></span>
             <span>最近 1h <span className="text-zinc-200">{fmtTokens(data.totals.last1h_total_tokens)}</span></span>
           </div>

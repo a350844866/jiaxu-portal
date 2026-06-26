@@ -96,6 +96,14 @@ export interface UsageLive {
     month_cost_usd: number
     last1h_total_tokens: number
   }
+  // 展志(zz-claude relay) 今日成本切片 + 占今日总量百分比。zz 折在 interactive 桶
+  // 里，单独查一次取出（反向规则：zz 有唯一稳定 cwd 前缀，其余含 mbp 都是 Taieo）。
+  zhanzhi: {
+    today_cost_usd: number
+    mine_cost: number
+    pct_of_total: number | null
+    pct_mine_of_total: number | null
+  }
 }
 
 const ALL_SYSTEMS: SystemName[] = ["mt4", "ibkr", "quant-flow", "auto-content", "interactive", "other"]
@@ -370,7 +378,29 @@ export async function getUsageLive(): Promise<UsageLive> {
     { today_cost_usd: 0, today_total_tokens: 0, month_cost_usd: 0, last1h_total_tokens: 0 }
   )
 
-  return { as_of: new Date().toISOString(), systems, totals }
+  // 展志(zz-claude) vs 我(Taieo) 今日对比 —— **Claude 池口径** (usage_events only)，
+  // 与 lzz 面板 cost-snapshot.sh 完全一致；分母不掺 Codex/$200 池、deepseek/qwen 等
+  // 别的计费池(展志只用 Claude，混入会稀释他的占比)。单查询原子取 claude 总量 + zz
+  // 切片，避免「先查总量再查 zz」两步之间有新事件落地导致 mine 短暂为负 / pct >100。
+  const [zzRows] = await p.query<mysql.RowDataPacket[]>(
+    `SELECT
+       COALESCE(SUM(cost_usd), 0) AS claude_total,
+       COALESCE(SUM(IF(project = '/home/jiaxu/zz-claude' OR project LIKE '/home/jiaxu/zz-claude/%', cost_usd, 0)), 0) AS zz_cost
+     FROM usage_events
+     WHERE ts >= ?`,
+    [todayUtc],
+  )
+  const claudeTotal = toNumber(zzRows[0]?.claude_total)
+  const zzCost = toNumber(zzRows[0]?.zz_cost)
+  const mineCost = Math.max(0, claudeTotal - zzCost)
+  const zhanzhi = {
+    today_cost_usd: zzCost,
+    mine_cost: mineCost,
+    pct_of_total: claudeTotal > 0 ? Math.round((zzCost / claudeTotal) * 1000) / 10 : null,
+    pct_mine_of_total: claudeTotal > 0 ? Math.round((mineCost / claudeTotal) * 1000) / 10 : null,
+  }
+
+  return { as_of: new Date().toISOString(), systems, totals, zhanzhi }
 }
 
 export interface BreakdownPoint {
