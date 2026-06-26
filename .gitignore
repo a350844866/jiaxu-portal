@@ -48,3 +48,7 @@ src/config/services-data.ts
 # auth config — contains password hash, TOTP secret, JWT secret
 data/auth/config.json
 
+
+# macOS junk
+._*
+.DS_Store

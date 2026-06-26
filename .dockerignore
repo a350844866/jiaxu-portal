@@ -9,3 +9,7 @@ README.md
 .env.local
 Dockerfile
 docker-compose.yml
+
+# macOS junk
+._*
+.DS_Store
