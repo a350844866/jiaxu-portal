@@ -18,8 +18,8 @@ vi.mock("next/headers", () => ({
   }),
 }))
 
-// Keep the REAL isInternalRequest + COOKIE_NAME; only stub verifySessionToken
-// (it reads on-disk config + verifies JWT).
+// Keep the REAL COOKIE_NAME; only stub verifySessionToken (it reads on-disk
+// config + verifies JWT).
 vi.mock("@/lib/auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/auth")>()
   return {
@@ -39,11 +39,10 @@ function withRequest(opts: { forwarded?: string; host?: string; cookie?: string 
   if (opts.cookie) cookieStore.set(COOKIE_NAME, opts.cookie)
 }
 
-// SECURITY CONTRACT: /api/logs* proxies sensitive production logs and must ALWAYS
-// require a valid portal session cookie — even for "internal" requests. Unlike the
-// global proxy.ts middleware, this gate deliberately does NOT honor isInternalRequest,
-// because the internal signal (leftmost x-forwarded-for) is client-spoofable through
-// the CF(grey)→NPM chain, which would otherwise expose prod logs to the public internet.
+// SECURITY CONTRACT: /api/logs* proxies sensitive production logs and must require a
+// valid portal session cookie regardless of network origin. The whole portal now
+// requires login (proxy.ts no longer trusts the spoofable x-forwarded-for); this
+// route-level gate stays as defense-in-depth.
 describe("isAuthed — /api/logs 会话门禁(生产日志,登录必需)", () => {
   beforeEach(() => {
     headerStore.clear()

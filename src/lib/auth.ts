@@ -8,7 +8,7 @@ import { randomBytes } from "crypto"
 const AUTH_DIR = process.env.AUTH_DIR || "./data/auth"
 const CONFIG_PATH = join(AUTH_DIR, "config.json")
 const COOKIE_NAME = "portal_session"
-const JWT_EXPIRY = "7d"
+const JWT_EXPIRY = "30d"
 const LOCKOUT_ATTEMPTS = 5
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000 // 15 minutes
 
@@ -140,47 +140,19 @@ export function generateJwtSecret(): string {
 export { COOKIE_NAME }
 
 export function sessionCookieOptions(secure: boolean, host?: string) {
+  const hostname = (host || "").split(":")[0]
+  // 仅真实域名设跨子域 Domain(*.liulin.work SSO)。IP / localhost / 空 → host-only
+  // cookie:浏览器对 IP host 的 Domain 属性(如 .31.66)直接拒收,会导致登录后 cookie
+  // 存不下来、看似登录成功实则无会话(裸 IP 访问 portal 时踩过)。
+  const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)
+  const useDomain = hostname.includes(".") && !isIp && hostname !== "localhost"
   return {
     name: COOKIE_NAME,
     httpOnly: true,
     secure,
     sameSite: "lax" as const,
     path: "/",
-    maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
-    // Set cookie on base domain for cross-subdomain SSO
-    ...(host ? { domain: `.${host.split(".").slice(-2).join(".")}` } : {}),
+    maxAge: 30 * 24 * 60 * 60, // 30 days in seconds
+    ...(useDomain ? { domain: `.${hostname.split(".").slice(-2).join(".")}` } : {}),
   }
-}
-
-// ── Network detection ──
-
-export function isInternalRequest(ip: string | null, host: string | null): boolean {
-  if (!ip && !host) return false
-  // Check host
-  if (host) {
-    const hostname = host.split(":")[0]
-    if (
-      hostname === "localhost" ||
-      hostname === "127.0.0.1" ||
-      /^192\.168\.\d+\.\d+$/.test(hostname) ||
-      /^10\.\d+\.\d+\.\d+$/.test(hostname) ||
-      /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(hostname)
-    ) {
-      return true
-    }
-  }
-  // Check IP
-  if (ip) {
-    const realIp = ip.split(",")[0].trim()
-    if (
-      realIp === "127.0.0.1" ||
-      realIp === "::1" ||
-      /^192\.168\./.test(realIp) ||
-      /^10\./.test(realIp) ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(realIp)
-    ) {
-      return true
-    }
-  }
-  return false
 }

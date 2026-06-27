@@ -15,9 +15,10 @@ export async function GET() {
     await fs.stat(path.join(CORPUS_DIR, "ledger.json"))
     return NextResponse.json({ ok: true })
   } catch (e) {
-    // Reachable un-authed only from loopback/LAN (proxy.ts isInternalRequest);
-    // gated externally. Log the real error server-side but keep the body generic
-    // so we never echo the corpus filesystem path.
+    // Public liveness endpoint (PUBLIC_PATHS in proxy.ts): the portal's own
+    // /api/health aggregator probes it over loopback, so it must be reachable
+    // without a session. Body stays generic ({ok:false}) — never echo the
+    // corpus filesystem path. Returns only liveness, nothing sensitive.
     console.warn("[serenity] health check failed:", e instanceof Error ? e.message : String(e))
     return NextResponse.json({ ok: false }, { status: 503 })
   }

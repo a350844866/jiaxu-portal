@@ -3,7 +3,7 @@
  *
  * 返回 mac-mini-collector 最新一次 tick + 30 样本历史 + collector 健康指标。
  *
- * Auth: middleware (proxy.ts) 已处理 — 公网 JWT, 内网 isInternalRequest 免 auth。
+ * Auth: middleware (proxy.ts) 已处理 — 全站统一要 portal 会话 JWT(无内网免登录)。
  * Detail filter (P0-5): 默认不返回完整 args (cmdline), 带 ?detail=1 才返回。
  *
  * 详见 docs/superpowers/specs/2026-05-16-mac-mini-monitoring-design.md §4.2

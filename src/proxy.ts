@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
-import { verifySessionToken, isInternalRequest, isSetupComplete, COOKIE_NAME } from "@/lib/auth"
+import { verifySessionToken, isSetupComplete, COOKIE_NAME } from "@/lib/auth"
 
 const PUBLIC_PATHS = [
   "/auth",
@@ -8,6 +8,9 @@ const PUBLIC_PATHS = [
   "/surge-rules",
   "/_next",
   "/favicon.ico",
+  // 仅返回 {ok} 的存活探针:portal 自身 /api/health 聚合器经 loopback 探它。
+  // 全站要登录后,这条若不放行会让 serenity 卡片误报 down。非敏感、可公开。
+  "/api/serenity/health",
 ]
 
 // Host → internal proxy route key
@@ -58,11 +61,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Internal network: skip auth
-  const forwarded = request.headers.get("x-forwarded-for")
-  if (isInternalRequest(forwarded, host)) {
-    return NextResponse.next()
-  }
+  // 全站一律要登录(2026-06-27)。原「内网 isInternalRequest 免登录」已删:
+  // isInternalRequest 取最左 x-forwarded-for,CF(灰云)→NPM 链路下最左段可被
+  // 外网伪造成私网 IP,实测 `X-Forwarded-For: 192.168.0.1` 即可无登录读 portal
+  // (surge 规则/token 成本/持仓等)。改为公网/内网统一 JWT 会话。
 
   // Check JWT session cookie
   const token = request.cookies.get(COOKIE_NAME)?.value
