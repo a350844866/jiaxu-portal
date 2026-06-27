@@ -8,13 +8,14 @@ import {
   recordFailedAttempt,
   clearRateLimit,
   sessionCookieOptions,
-  COOKIE_NAME,
+  clientIp,
 } from "@/lib/auth"
 
 export const dynamic = "force-dynamic"
 
 export async function POST(request: NextRequest) {
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+  // 不可伪造的真实来源 IP(X-Real-IP 优先),否则限流可被轮换最左 XFF 绕过
+  const ip = clientIp(request.headers.get("x-real-ip"), request.headers.get("x-forwarded-for"))
 
   // Rate limit check
   const limit = checkRateLimit(ip)

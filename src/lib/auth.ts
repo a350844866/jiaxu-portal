@@ -50,6 +50,18 @@ export function clearRateLimit(ip: string): void {
   rateLimits.delete(ip)
 }
 
+/**
+ * 取可信来源 IP(限流等用)。NPM 用 $remote_addr 覆盖式写 X-Real-IP(攻击者伪造不了),
+ * 故优先它;退化取 X-Forwarded-For 最后一段(NPM append 的那项=NPM 见到的真 client),
+ * 绝不取最左段(客户端自填、可伪造——portal 老 XFF 洞之源);都没有→"unknown"。
+ */
+export function clientIp(xRealIp: string | null, xff: string | null): string {
+  const real = xRealIp?.trim()
+  if (real) return real
+  const parts = (xff || "").split(",").map((s) => s.trim()).filter(Boolean)
+  return parts.length ? parts[parts.length - 1] : "unknown"
+}
+
 // ── Config persistence ──
 
 interface AuthConfig {
