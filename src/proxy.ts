@@ -11,6 +11,7 @@ const PUBLIC_PATHS = [
   // 仅返回 {ok} 的存活探针:portal 自身 /api/health 聚合器经 loopback 探它。
   // 全站要登录后,这条若不放行会让 serenity 卡片误报 down。非敏感、可公开。
   "/api/serenity/health",
+  "/api/ai-chain/health",
 ]
 
 // Host → internal proxy route key
