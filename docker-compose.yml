@@ -31,6 +31,7 @@ services:
       - PORTAL_STATE_DIR=/data/portal-state
       - VAULT_DIR=/data/vault
       - SERENITY_CORPUS_DIR=/data/x-corpus
+      - AI_CHAIN_DATA_DIR=/data/ai-chain
       - WIFE_OBSERVER_API_TOKEN=${WIFE_OBSERVER_API_TOKEN}
       - WIFE_OBSERVER_BACKEND_URL=${WIFE_OBSERVER_BACKEND_URL}
       - N8N_API_URL=${N8N_API_URL}
@@ -55,6 +56,8 @@ services:
       - /programHost/obsidian/jiaxu:/data/vault:ro
       # serenity dashboard — reads tweets-full.json + ledger.json (ro)
       - /data/x-exports/aleabitoreddit:/data/x-corpus:ro
+      # ai-chain 看板 — quotes.json 由宿主 cron(yfinance)日更;chain.json 走上面 vault 挂载
+      - /data/ai-chain:/data/ai-chain:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
       # qB 健康检查走 LAN .67 直连(2.5G):域名保证证书 CN 匹配 + 过 qB HostHeaderValidation
