@@ -60,6 +60,13 @@ function str(v: unknown): string {
   return typeof v === "string" ? v : v == null ? "" : String(v)
 }
 
+// vault 手工维护,枚举漂移(笔误/改名)要浮出水面而不是无声降级——与 serenity-pure clampEnum 同模式。
+function clampEnum<T extends string>(v: string, allowed: readonly T[], fallback: T, field: string): T {
+  if ((allowed as readonly string[]).includes(v)) return v as T
+  if (v) console.warn(`[ai-chain] 未知 ${field} 值 "${v}",降级为 "${fallback}"`)
+  return fallback
+}
+
 /** 解析 ai-chain.json。字段做宽松归一而不是硬抛错:vault 侧手工维护,个别笔误不应整页挂掉。 */
 export function parseChain(raw: string): Chain {
   const d = JSON.parse(raw) as Record<string, unknown>
@@ -78,7 +85,7 @@ export function parseChain(raw: string): Chain {
         order: Number(o.order) || 0,
         name: str(o.name),
         role: str(o.role),
-        focus: Array.isArray(o.focus) ? o.focus.map(str) : [],
+        focus: Array.isArray(o.focus) ? o.focus.map((f) => str(f).toUpperCase()) : [],
         refs: Array.isArray(o.refs) ? o.refs.map(str) : [],
       }
     })
@@ -86,15 +93,12 @@ export function parseChain(raw: string): Chain {
 
   const stocks: ChainStock[] = (Array.isArray(d.stocks) ? d.stocks : []).map((x) => {
     const o = x as Record<string, unknown>
-    const cpRaw = str(o.cp) as CpLevel
     const signals: ChainSignal[] = (Array.isArray(o.signals) ? o.signals : []).map((s) => {
       const so = s as Record<string, unknown>
-      const type = str(so.type) as SignalType
-      const source = str(so.source) as SignalSource
       return {
         date: str(so.date),
-        source: SIGNAL_SOURCES.includes(source) ? source : "claude",
-        type: SIGNAL_TYPES.includes(type) ? type : "watch",
+        source: clampEnum(str(so.source), SIGNAL_SOURCES, "claude", "signal.source"),
+        type: clampEnum(str(so.type), SIGNAL_TYPES, "watch", "signal.type"),
         note: str(so.note),
         ref: so.ref ? str(so.ref) : undefined,
       }
@@ -104,7 +108,7 @@ export function parseChain(raw: string): Chain {
       name: str(o.name),
       segment: str(o.segment),
       position: str(o.position),
-      cp: CP_LEVELS.includes(cpRaw) ? cpRaw : "no",
+      cp: clampEnum(str(o.cp), CP_LEVELS, "no", "cp"),
       cpNote: o.cpNote ? str(o.cpNote) : undefined,
       desc: str(o.desc),
       note: str(o.note),
@@ -112,6 +116,12 @@ export function parseChain(raw: string): Chain {
       signals,
     }
   })
+
+  // 悬空 segment 引用会让该股从页面无声消失,提前浮出
+  const segIds = new Set(segments.map((s) => s.id))
+  for (const s of stocks) {
+    if (!segIds.has(s.segment)) console.warn(`[ai-chain] ${s.ticker} 的 segment "${s.segment}" 不在 segments 声明中,将不渲染`)
+  }
 
   return {
     version: Number(d.version) || 1,
