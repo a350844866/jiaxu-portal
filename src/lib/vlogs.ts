@@ -12,6 +12,7 @@ import {
   VlogsError,
   type LogLine,
 } from "./vlogs-pure"
+import { aggregateFeErrors, buildFeErrorsLogsQL, type FeErrorSummary } from "./fe-errors-pure"
 
 async function vlogsFetch(query: string): Promise<string> {
   const base = process.env.VLOGS_BASE_URL
@@ -55,5 +56,12 @@ export async function healthCounts(
   return aggregateHealth(text, containers)
 }
 
+/** 前端错误上报(FE_ERROR)24h 聚合摘要,供首页 FeErrorCard。 */
+export async function feErrorSummary(): Promise<FeErrorSummary> {
+  const text = await vlogsFetch(buildFeErrorsLogsQL())
+  return aggregateFeErrors(text)
+}
+
 export { VlogsError } from "./vlogs-pure"
 export type { LogLine } from "./vlogs-pure"
+export type { FeErrorSummary } from "./fe-errors-pure"
