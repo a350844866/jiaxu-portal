@@ -1,6 +1,7 @@
 "use client"
 import { useCallback, useEffect, useState } from "react"
-import { LineChart, CircleAlert, RefreshCw } from "lucide-react"
+import Link from "next/link"
+import { LineChart, CircleAlert, RefreshCw, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { PmPaperSnapshot } from "@/lib/pm-paper-reader"
 
@@ -73,107 +74,132 @@ export function PmPaperCard() {
     brierClaude != null && brierMarket != null ? brierClaude < brierMarket : null
 
   return (
-    <section className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950/40 p-4">
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <LineChart className="h-4 w-4 text-zinc-400" />
-          <span className="text-sm font-medium text-zinc-200">pm-paper 模拟盘</span>
-          <span className="text-xs text-zinc-500">Polymarket paper-trading</span>
-        </div>
-        <button onClick={load} aria-label="刷新" className="text-zinc-500 hover:text-zinc-300">
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-        </button>
-      </header>
+    <section className="group relative mt-6 rounded-2xl border border-zinc-800 bg-zinc-950/40 p-4 transition-colors hover:border-zinc-700/80 hover:bg-zinc-900/40">
+      {/* 整卡可点击跳 /pm-paper 完整看板;绝对定位覆盖层 + 内容层 pointer-events-none
+          是刻意结构(而非把 Link 当外层容器包 button)—— <a> 里嵌 <button> 是无效
+          HTML(交互元素嵌套交互元素)。刷新按钮单独把自己的 pointer-events 打开、
+          置于更高 z-index,点击只命中按钮本身,不会穿透触发跳转。 */}
+      <Link
+        href="/pm-paper"
+        className="absolute inset-0 z-0 rounded-2xl"
+        aria-label="查看 pm-paper 完整看板"
+      />
 
-      {data?.halt && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
-          <CircleAlert className="h-3.5 w-3.5 shrink-0" />
-          熔断中(HALT)— 回撤触发保护,executor 已停挂单
-        </div>
-      )}
-
-      {err ? (
-        <div className="mt-2 text-xs text-rose-400">{err}</div>
-      ) : !data ? (
-        <div className="mt-2 text-xs text-zinc-500">加载中…</div>
-      ) : data.bootstrapping ? (
-        <div className="mt-2 text-xs text-zinc-500">实验第0周,等待首轮数据</div>
-      ) : (
-        <>
-          <div className="mt-3 flex flex-wrap items-baseline gap-x-5 gap-y-2">
-            <Stat n={data.universeCount} label="盘" />
-            <Stat n={data.predictionsCount} label="累计预测" />
-            <Stat n={overall?.n_open_orders ?? null} label="挂单中" />
-            <Stat n={overall?.n_fills_total ?? null} label="已成交" />
-            <Stat n={overall?.n_settled_predictions ?? null} label="已结算" />
+      <div className="pointer-events-none relative z-10">
+        <header className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <LineChart className="h-4 w-4 text-zinc-400" />
+            <span className="text-sm font-medium text-zinc-200">pm-paper 模拟盘</span>
+            <span className="text-xs text-zinc-500">Polymarket paper-trading</span>
           </div>
+          <button
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              load()
+            }}
+            aria-label="刷新"
+            className="pointer-events-auto relative z-20 text-zinc-500 hover:text-zinc-300"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </header>
 
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2.5">
-              <div className="text-[11px] text-zinc-500">P&amp;L(bankroll ${data.bankroll ?? "—"})</div>
-              <div className="mt-1 flex items-baseline gap-2">
-                <span
-                  className={cn(
-                    "text-base font-semibold tabular-nums",
-                    (overall?.pnl ?? 0) > 0
-                      ? "text-emerald-400"
-                      : (overall?.pnl ?? 0) < 0
-                        ? "text-rose-400"
-                        : "text-zinc-300",
-                  )}
-                >
-                  {fmtUsd(overall?.pnl)}
-                </span>
-                <span className="text-xs text-zinc-500">{fmtPct(overall?.roi_on_cost)} ROI</span>
-              </div>
+        {data?.halt && (
+          <div className="mt-3 flex items-center gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+            <CircleAlert className="h-3.5 w-3.5 shrink-0" />
+            熔断中(HALT)— 回撤触发保护,executor 已停挂单
+          </div>
+        )}
+
+        {err ? (
+          <div className="mt-2 text-xs text-rose-400">{err}</div>
+        ) : !data ? (
+          <div className="mt-2 text-xs text-zinc-500">加载中…</div>
+        ) : data.bootstrapping ? (
+          <div className="mt-2 text-xs text-zinc-500">实验第0周,等待首轮数据</div>
+        ) : (
+          <>
+            <div className="mt-3 flex flex-wrap items-baseline gap-x-5 gap-y-2">
+              <Stat n={data.universeCount} label="盘" />
+              <Stat n={data.predictionsCount} label="累计预测" />
+              <Stat n={overall?.n_open_orders ?? null} label="挂单中" />
+              <Stat n={overall?.n_fills_total ?? null} label="已成交" />
+              <Stat n={overall?.n_settled_predictions ?? null} label="已结算" />
             </div>
 
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2.5">
-              <div className="text-[11px] text-zinc-500">
-                Brier(Claude vs 市场,越低越准)
-                {lowSample && <span className="ml-1.5 text-amber-500/80">样本不足({sampleN})</span>}
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2.5">
+                <div className="text-[11px] text-zinc-500">P&amp;L(bankroll ${data.bankroll ?? "—"})</div>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span
+                    className={cn(
+                      "text-base font-semibold tabular-nums",
+                      (overall?.pnl ?? 0) > 0
+                        ? "text-emerald-400"
+                        : (overall?.pnl ?? 0) < 0
+                          ? "text-rose-400"
+                          : "text-zinc-300",
+                    )}
+                  >
+                    {fmtUsd(overall?.pnl)}
+                  </span>
+                  <span className="text-xs text-zinc-500">{fmtPct(overall?.roi_on_cost)} ROI</span>
+                </div>
               </div>
-              <div className="mt-1 flex items-baseline gap-3 text-xs">
-                <span
-                  className={cn(
-                    "font-semibold tabular-nums",
-                    claudeWins === true ? "text-emerald-400" : claudeWins === false ? "text-rose-400" : "text-zinc-300",
-                  )}
-                >
-                  Claude {fmtBrier(brierClaude)}
-                </span>
-                <span
-                  className={cn(
-                    "font-semibold tabular-nums",
-                    claudeWins === false ? "text-emerald-400" : claudeWins === true ? "text-rose-400" : "text-zinc-300",
-                  )}
-                >
-                  市场 {fmtBrier(brierMarket)}
-                </span>
-              </div>
-            </div>
-          </div>
 
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 text-xs">
-            {(["politics", "data"] as const).map((key) => {
-              const c = data.cohorts[key]
-              return (
-                <div key={key} className="flex items-center justify-between rounded-lg border border-zinc-800/60 px-2.5 py-1.5">
-                  <span className="text-zinc-400">{key === "politics" ? "政治盘" : "数据盘"}</span>
-                  <span className="text-zinc-300 tabular-nums">
-                    {c ? `${c.n_settled_predictions} 结算 · ${fmtUsd(c.pnl)}` : "—"}
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-2.5">
+                <div className="text-[11px] text-zinc-500">
+                  Brier(Claude vs 市场,越低越准)
+                  {lowSample && <span className="ml-1.5 text-amber-500/80">样本不足({sampleN})</span>}
+                </div>
+                <div className="mt-1 flex items-baseline gap-3 text-xs">
+                  <span
+                    className={cn(
+                      "font-semibold tabular-nums",
+                      claudeWins === true ? "text-emerald-400" : claudeWins === false ? "text-rose-400" : "text-zinc-300",
+                    )}
+                  >
+                    Claude {fmtBrier(brierClaude)}
+                  </span>
+                  <span
+                    className={cn(
+                      "font-semibold tabular-nums",
+                      claudeWins === false ? "text-emerald-400" : claudeWins === true ? "text-rose-400" : "text-zinc-300",
+                    )}
+                  >
+                    市场 {fmtBrier(brierMarket)}
                   </span>
                 </div>
-              )
-            })}
-          </div>
+              </div>
+            </div>
 
-          <div className="mt-3 text-[11px] text-zinc-600">
-            数据更新:{data.generatedAt ? new Date(data.generatedAt).toLocaleString("zh-CN") : "—"}
-            {data.ageSeconds != null && <span> · {fmtAge(data.ageSeconds)}</span>}
-          </div>
-        </>
-      )}
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 text-xs">
+              {(["politics", "data"] as const).map((key) => {
+                const c = data.cohorts[key]
+                return (
+                  <div key={key} className="flex items-center justify-between rounded-lg border border-zinc-800/60 px-2.5 py-1.5">
+                    <span className="text-zinc-400">{key === "politics" ? "政治盘" : "数据盘"}</span>
+                    <span className="text-zinc-300 tabular-nums">
+                      {c ? `${c.n_settled_predictions} 结算 · ${fmtUsd(c.pnl)}` : "—"}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div className="mt-3 flex items-center justify-between text-[11px] text-zinc-600">
+              <span>
+                数据更新:{data.generatedAt ? new Date(data.generatedAt).toLocaleString("zh-CN") : "—"}
+                {data.ageSeconds != null && <span> · {fmtAge(data.ageSeconds)}</span>}
+              </span>
+              <span className="flex items-center gap-1 text-zinc-500 opacity-0 transition-opacity group-hover:opacity-100">
+                查看完整看板 <ArrowRight className="h-3 w-3" />
+              </span>
+            </div>
+          </>
+        )}
+      </div>
     </section>
   )
 }

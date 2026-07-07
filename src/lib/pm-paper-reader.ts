@@ -77,9 +77,12 @@ export interface PmPaperSnapshot {
 }
 
 // Resolved at call time (not module load) so tests can override PM_PAPER_STATE_DIR.
-function stateDir(): string {
+// Exported so pm-paper-detail-reader.ts (orders/predictions/settlements join layer)
+// shares the exact same resolution instead of re-deriving it.
+export function pmPaperStateDir(): string {
   return process.env.PM_PAPER_STATE_DIR || "/data/pm-paper/state"
 }
+const stateDir = pmPaperStateDir
 
 function normalizeCohort(raw: Partial<CohortStats> | undefined): CohortStats | null {
   if (!raw || typeof raw !== "object") return null
