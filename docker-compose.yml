@@ -32,6 +32,7 @@ services:
       - VAULT_DIR=/data/vault
       - SERENITY_CORPUS_DIR=/data/x-corpus
       - AI_CHAIN_DATA_DIR=/data/ai-chain
+      - PM_PAPER_STATE_DIR=/data/pm-paper/state
       - WIFE_OBSERVER_API_TOKEN=${WIFE_OBSERVER_API_TOKEN}
       - WIFE_OBSERVER_BACKEND_URL=${WIFE_OBSERVER_BACKEND_URL}
       - N8N_API_URL=${N8N_API_URL}
@@ -58,6 +59,8 @@ services:
       - /data/x-exports/aleabitoreddit:/data/x-corpus:ro
       # ai-chain 看板 — quotes.json 由宿主 cron(yfinance)日更;chain.json 走上面 vault 挂载
       - /data/ai-chain:/data/ai-chain:ro
+      # pm-paper 模拟盘看板 — stats/universe/predictions/HALT(ro,只读展示)
+      - /data/pm-paper/state:/data/pm-paper/state:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
       # qB 健康检查走 LAN .67 直连(2.5G):域名保证证书 CN 匹配 + 过 qB HostHeaderValidation
