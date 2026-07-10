@@ -18,6 +18,12 @@ function fmtUsd(n: number | null | undefined): string {
   return `${sign}$${n.toFixed(2)}`
 }
 
+function fmtPct(n: number | null | undefined): string {
+  if (n == null || Number.isNaN(n)) return "—"
+  const sign = n > 0 ? "+" : ""
+  return `${sign}${(n * 100).toFixed(1)}%`
+}
+
 function pnlClass(n: number | null | undefined): string {
   if (n == null) return "text-zinc-300"
   return n > 0 ? "text-emerald-400" : n < 0 ? "text-rose-400" : "text-zinc-300"
@@ -48,6 +54,7 @@ function VariantTable({ variants }: { variants: PmScalpVariantStat[] }) {
               <th className="py-1.5 pr-3 text-right font-normal">已结算</th>
               <th className="py-1.5 pr-3 text-right font-normal">胜率</th>
               <th className="py-1.5 pr-3 text-right font-normal">P&amp;L</th>
+              <th className="py-1.5 pr-3 text-right font-normal">盈利率</th>
               <th className="py-1.5 pr-3 text-right font-normal">均值/笔</th>
               <th className="py-1.5 text-right font-normal">持仓中</th>
             </tr>
@@ -66,6 +73,9 @@ function VariantTable({ variants }: { variants: PmScalpVariantStat[] }) {
                 </td>
                 <td className={cn("py-1.5 pr-3 text-right font-semibold tabular-nums", pnlClass(v.pnl))}>
                   {fmtUsd(v.pnl)}
+                </td>
+                <td className={cn("py-1.5 pr-3 text-right tabular-nums", pnlClass(v.roiOnCost))}>
+                  {fmtPct(v.roiOnCost)}
                 </td>
                 <td className={cn("py-1.5 pr-3 text-right tabular-nums", pnlClass(v.avgPerTrade))}>
                   {fmtUsd(v.avgPerTrade)}
@@ -174,7 +184,7 @@ export default async function PmScalpPage() {
             {fmtUsd(snap.totals.pnl)}
           </div>
           <div className="text-[11px] text-zinc-500">
-            胜率 {winrate == null ? "—" : `${(winrate * 100).toFixed(0)}%`} · 持仓 {snap.totals.open}
+            盈利率 {fmtPct(snap.totals.roiOnCost)} · 胜率 {winrate == null ? "—" : `${(winrate * 100).toFixed(0)}%`} · 持仓 {snap.totals.open}
           </div>
         </div>
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-3">

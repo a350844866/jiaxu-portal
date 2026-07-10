@@ -34,6 +34,10 @@ export interface PmScalpVariantStat {
   winrate: number | null
   pnl: number
   avgPerTrade: number | null
+  /** 已结算投入(买入成本+手续费),盈利率分母 */
+  settledCost: number
+  /** 盈利率 = pnl / settledCost,无已结算时 null */
+  roiOnCost: number | null
   open: number
 }
 
@@ -59,7 +63,7 @@ export interface PmScalpSnapshot {
   windowsRecorded: number
   ledgerSince: string
   judgmentDate: string
-  totals: { settled: number; wins: number; pnl: number; open: number }
+  totals: { settled: number; wins: number; pnl: number; open: number; settledCost: number; roiOnCost: number | null }
   variants: PmScalpVariantStat[]
   openEntries: PmScalpTradeRow[]
   recentTrades: PmScalpTradeRow[]
@@ -200,6 +204,8 @@ export async function readPmScalpSnapshot(): Promise<PmScalpSnapshot> {
       winrate: null,
       pnl: 0,
       avgPerTrade: null,
+      settledCost: 0,
+      roiOnCost: null,
       open: 0,
     })
   }
@@ -213,7 +219,7 @@ export async function readPmScalpSnapshot(): Promise<PmScalpSnapshot> {
     seenEntry.add(entryKey)
     const stat =
       byVariant.get(e.v) ??
-      ({ id: e.v, label: e.v, mode: "?", settled: 0, wins: 0, winrate: null, pnl: 0, avgPerTrade: null, open: 0 } as PmScalpVariantStat)
+      ({ id: e.v, label: e.v, mode: "?", settled: 0, wins: 0, winrate: null, pnl: 0, avgPerTrade: null, settledCost: 0, roiOnCost: null, open: 0 } as PmScalpVariantStat)
     byVariant.set(e.v, stat)
     const settle = settleKey.get(`${e.w}:${e.v}`)
     const row: PmScalpTradeRow = {
@@ -231,6 +237,7 @@ export async function readPmScalpSnapshot(): Promise<PmScalpSnapshot> {
       stat.settled += 1
       if (settle.won) stat.wins += 1
       stat.pnl += settle.pnl
+      stat.settledCost += e.px * e.sh + e.fee
       settledRows.push(row)
     } else {
       stat.open += 1
@@ -241,19 +248,22 @@ export async function readPmScalpSnapshot(): Promise<PmScalpSnapshot> {
     if (stat.settled > 0) {
       stat.winrate = stat.wins / stat.settled
       stat.avgPerTrade = stat.pnl / stat.settled
+      stat.roiOnCost = stat.settledCost > 0 ? stat.pnl / stat.settledCost : null
     }
   }
 
   settledRows.sort((a, b) => b.w - a.w)
   openEntries.sort((a, b) => b.w - a.w)
 
-  const totals = { settled: 0, wins: 0, pnl: 0, open: 0 }
+  const totals = { settled: 0, wins: 0, pnl: 0, open: 0, settledCost: 0, roiOnCost: null as number | null }
   for (const s of byVariant.values()) {
     totals.settled += s.settled
     totals.wins += s.wins
     totals.pnl += s.pnl
     totals.open += s.open
+    totals.settledCost += s.settledCost
   }
+  if (totals.settledCost > 0) totals.roiOnCost = totals.pnl / totals.settledCost
 
   return {
     ok: true,

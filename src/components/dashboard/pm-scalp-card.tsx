@@ -109,7 +109,11 @@ export function PmScalpCard() {
                 <span className={cn("text-lg font-semibold tabular-nums", (totals?.pnl ?? 0) > 0 ? "text-emerald-400" : (totals?.pnl ?? 0) < 0 ? "text-rose-400" : "text-zinc-100")}>
                   {fmtUsd(totals?.pnl)}
                 </span>
-                <span className="text-[11px] text-zinc-500">P&amp;L</span>
+                <span className="text-[11px] text-zinc-500">
+                  P&amp;L{totals?.roiOnCost != null && (
+                    <> · {totals.roiOnCost > 0 ? "+" : ""}{(totals.roiOnCost * 100).toFixed(1)}%</>
+                  )}
+                </span>
               </span>
             </div>
 

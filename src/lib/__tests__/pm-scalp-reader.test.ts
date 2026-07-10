@@ -32,7 +32,7 @@ describe("readPmScalpSnapshot", () => {
   it("空态: 全部文件缺失 → 不抛错, 零交易, null 新鲜度", async () => {
     const snap = await readPmScalpSnapshot()
     expect(snap.ok).toBe(true)
-    expect(snap.totals).toEqual({ settled: 0, wins: 0, pnl: 0, open: 0 })
+    expect(snap.totals).toEqual({ settled: 0, wins: 0, pnl: 0, open: 0, settledCost: 0, roiOnCost: null })
     expect(snap.dataAgeSeconds).toBeNull()
     expect(snap.heartbeatAgeSeconds).toBeNull()
     expect(snap.windowsRecorded).toBe(0)
@@ -65,7 +65,12 @@ describe("readPmScalpSnapshot", () => {
     expect(p1.settled).toBe(1)
     expect(p1.wins).toBe(1)
     expect(p1.winrate).toBe(1)
-    expect(snap.totals).toEqual({ settled: 2, wins: 1, pnl: expect.closeTo(-94.55, 2), open: 1 })
+    // 盈利率 = pnl / 已结算投入(买入成本+费): N1 settledCost=0.45*222.22+3.85≈103.85
+    expect(n1.settledCost).toBeCloseTo(103.85, 1)
+    expect(n1.roiOnCost).toBeCloseTo(-1.0, 2)
+    expect(snap.totals.settledCost).toBeCloseTo(103.85 + 0.003 * 3333.33 + 0.7, 1)
+    expect(snap.totals.roiOnCost).toBeCloseTo(-94.55 / 114.55, 2)
+    expect(snap.totals).toMatchObject({ settled: 2, wins: 1, pnl: expect.closeTo(-94.55, 2), open: 1 })
     expect(snap.openEntries).toHaveLength(1)
     expect(snap.recentTrades).toHaveLength(2)
     // 最近结算按窗口倒序
