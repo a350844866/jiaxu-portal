@@ -44,7 +44,7 @@ function FreshDot({ sec, staleAfter }: { sec: number | null; staleAfter: number 
 function VariantTable({ variants }: { variants: PmScalpVariantStat[] }) {
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
-      <h2 className="text-sm font-medium text-zinc-200">六变体战绩<span className="ml-2 text-xs font-normal text-zinc-500">每笔固定虚拟注 $100(P1 $10)· 变体间独立核算 · 无本金池不复利</span></h2>
+      <h2 className="text-sm font-medium text-zinc-200">变体战绩<span className="ml-2 text-xs font-normal text-zinc-500">每笔固定虚拟注 $100(P1 $10)· 变体间独立核算 · 无本金池不复利</span></h2>
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[560px] text-xs">
           <thead>
@@ -204,7 +204,7 @@ export default async function PmScalpPage() {
 
       <p className="rounded-xl border border-zinc-800/60 bg-zinc-900/30 px-3 py-2 text-[11px] leading-5 text-zinc-500">
         <span className="text-zinc-400">资金口径:</span>没有固定本金池——每笔独立投入固定虚拟注 $100(P1 $10),含买入成本与 taker 手续费,持有到窗口结算,不复利。
-        「累计投入」是<span className="text-zinc-400">流水</span>而非占用资金:同一时刻最多约 $510 在场(六变体同窗全开)。
+        「累计投入」是<span className="text-zinc-400">流水</span>而非占用资金:多变体同窗全开时同刻在场可达 ~$1,200(极端)。
         <span className="text-zinc-400">盈利率 = 累计盈亏 ÷ 累计投入</span>,即按投入加权的单笔平均收益率(每投入 $1 平均赚回多少),不是"账户本金涨幅"。
         样本注意:多个变体常在同一窗口开仓,盈亏高度相关,有效样本按独立窗口数看。
       </p>

@@ -37,7 +37,7 @@ describe("readPmScalpSnapshot", () => {
     expect(snap.heartbeatAgeSeconds).toBeNull()
     expect(snap.windowsRecorded).toBe(0)
     expect(snap.basis).toBeNull()
-    expect(snap.variants).toHaveLength(6) // 六变体骨架始终存在
+    expect(snap.variants.length).toBeGreaterThanOrEqual(6) // 变体骨架始终存在
     expect(snap.openEntries).toEqual([])
     expect(snap.recentTrades).toEqual([])
   })

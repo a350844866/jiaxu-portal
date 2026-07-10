@@ -22,7 +22,14 @@ const VARIANT_META: Record<string, { label: string; mode: string }> = {
   N3: { label: "噪声回归 240-285s ≤3bps", mode: "taker" },
   N4: { label: "噪声回归 240-285s ≤6bps", mode: "taker" },
   M3: { label: "maker 对照 240-285s ≤3bps", mode: "maker" },
+  N0: { label: "无位移过滤对照 240-285s", mode: "taker" },
   P1: { label: "便士收割 ≤$0.02", mode: "taker" },
+  F1: { label: "热门动量 180-270s ≥8bps 买领先侧", mode: "taker" },
+  E1: { label: "早段失真+8c反弹卖出(原始版)", mode: "taker" },
+  B1a: { label: "双边锁定·腿1(落后侧≤.44)", mode: "taker" },
+  B1b: { label: "双边锁定·腿2(合计≤.97)", mode: "taker" },
+  A1a: { label: "交叉盘套利·Up腿", mode: "taker" },
+  A1b: { label: "交叉盘套利·Down腿", mode: "taker" },
 }
 
 export interface PmScalpVariantStat {
