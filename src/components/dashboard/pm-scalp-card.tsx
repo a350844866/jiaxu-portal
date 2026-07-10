@@ -111,7 +111,7 @@ export function PmScalpCard() {
                 </span>
                 <span className="text-[11px] text-zinc-500">
                   P&amp;L{totals?.roiOnCost != null && (
-                    <> · {totals.roiOnCost > 0 ? "+" : ""}{(totals.roiOnCost * 100).toFixed(1)}%</>
+                    <> · 每$1投入{totals.roiOnCost > 0 ? "+" : ""}{(totals.roiOnCost * 100).toFixed(1)}%</>
                   )}
                 </span>
               </span>
@@ -135,7 +135,7 @@ export function PmScalpCard() {
             </div>
 
             <div className="mt-3 flex items-center justify-between text-[11px] text-zinc-600">
-              <span>cl-only 干净账本 · 六变体并行 forward test</span>
+              <span>固定虚拟注 $100/笔 · 无本金池 · cl-only 干净账本</span>
               <span className="flex items-center gap-1 text-zinc-500 opacity-0 transition-opacity group-hover:opacity-100">
                 查看完整看板 <ArrowRight className="h-3 w-3" />
               </span>
