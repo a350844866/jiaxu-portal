@@ -8,6 +8,7 @@ import { ResourceRail } from "@/components/dashboard/resource-rail"
 import { MacMiniRail } from "@/components/dashboard/mac-mini-rail"
 import { TodoCard } from "@/components/dashboard/todo-card"
 import { PmPaperCard } from "@/components/dashboard/pm-paper-card"
+import { PmScalpCard } from "@/components/dashboard/pm-scalp-card"
 import { AINewsCard } from "@/components/dashboard/ai-news-card"
 import { N8nCard } from "@/components/dashboard/n8n-card"
 import { ZhihuHotCard } from "@/components/dashboard/zhihu-hot-card"
@@ -31,6 +32,7 @@ export default async function Home() {
       <N8nCard />
       <TodoCard />
       <PmPaperCard />
+      <PmScalpCard />
       <ServiceGrid services={services} initialHealth={health} />
       <footer className="mt-12 text-center text-xs text-zinc-600">
         jiaxu-server-home
