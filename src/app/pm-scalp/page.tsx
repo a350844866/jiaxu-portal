@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { readPmScalpSnapshot, type PmScalpTradeRow, type PmScalpVariantStat } from "@/lib/pm-scalp-reader"
+import { PmScalpTabs } from "./tabs"
 import { cn } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
@@ -160,6 +161,7 @@ export default async function PmScalpPage() {
           验证钱包法证发现的 top 赢家打法:窗口最后 60-110 秒、Chainlink 位移可忽略时买入被砸的落后侧。
           决策只用 Polymarket 结算同源的 Chainlink 流(cl-only),币安仅作基差观测。全部虚拟资金。
         </p>
+        <PmScalpTabs active="paper" />
       </header>
 
       {/* 健康与总览条 */}

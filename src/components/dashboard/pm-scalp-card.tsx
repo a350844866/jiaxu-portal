@@ -4,6 +4,7 @@ import Link from "next/link"
 import { Timer, RefreshCw, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { PmScalpSnapshot } from "@/lib/pm-scalp-reader"
+import type { PmScalpRealSnapshot } from "@/lib/pm-scalp-real-reader"
 
 function fmtAge(sec: number | null | undefined): string {
   if (sec == null) return "—"
@@ -30,22 +31,34 @@ function Stat({ n, label }: { n: number | string | null; label: string }) {
 
 export function PmScalpCard() {
   const [data, setData] = useState<PmScalpSnapshot | null>(null)
+  const [real, setReal] = useState<PmScalpRealSnapshot | null>(null)
+  const [realErr, setRealErr] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
     setErr(null)
-    try {
-      const res = await fetch("/api/pm-scalp", { cache: "no-store" })
-      const body = await res.json()
-      if (!res.ok) setErr(body.error ?? "pm-scalp 状态读取失败")
-      else setData(body)
-    } catch {
-      setErr("pm-scalp 状态读取失败")
-    } finally {
-      setLoading(false)
-    }
+    // allSettled: 实盘接口失败不拖垮模拟盘展示, 反之亦然
+    const [paperRes, realRes] = await Promise.allSettled([
+      fetch("/api/pm-scalp", { cache: "no-store" }).then(async (r) => {
+        const body = await r.json()
+        if (!r.ok) throw new Error(body.error ?? "fail")
+        return body as PmScalpSnapshot
+      }),
+      fetch("/api/pm-scalp/real", { cache: "no-store" }).then(async (r) => {
+        const body = await r.json()
+        if (!r.ok) throw new Error(body.error ?? "fail")
+        return body as PmScalpRealSnapshot
+      }),
+    ])
+    if (paperRes.status === "fulfilled") setData(paperRes.value)
+    else setErr("pm-scalp 状态读取失败")
+    if (realRes.status === "fulfilled") {
+      setReal(realRes.value)
+      setRealErr(false)
+    } else setRealErr(true)
+    setLoading(false)
   }, [])
 
   useEffect(() => {
@@ -133,6 +146,44 @@ export function PmScalpCard() {
               )}
               <span className="text-zinc-600">判定日 {data.judgmentDate}</span>
             </div>
+
+            {/* 实盘 LIVE 行: 独立数据源, 整行可点直达实盘页(兄弟层级, 沿用刷新按钮的分层模式) */}
+            {realErr ? (
+              <div className="mt-3 border-t border-zinc-800/60 pt-2 text-[11px] text-zinc-600">实盘数据不可用</div>
+            ) : real ? (
+              <Link
+                href="/pm-scalp/real"
+                className="pointer-events-auto relative z-20 mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border-t border-zinc-800/60 pt-2 text-[11px] hover:bg-zinc-800/30"
+              >
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className={cn(
+                      "inline-block h-2 w-2 rounded-full",
+                      real.running && (real.lastEventAgeSeconds ?? 1e9) < 3600
+                        ? "animate-pulse bg-emerald-500"
+                        : real.running
+                          ? "bg-amber-500"
+                          : "bg-zinc-600",
+                    )}
+                  />
+                  <span className="font-medium text-rose-300/90">LIVE 实盘</span>
+                </span>
+                <span className="tabular-nums text-zinc-300">${real.realizedEquity.toFixed(2)}</span>
+                <span
+                  className={cn(
+                    "font-semibold tabular-nums",
+                    real.netTotal > 0 ? "text-emerald-400" : real.netTotal < 0 ? "text-rose-400" : "text-zinc-400",
+                  )}
+                >
+                  {real.netTotal > 0 ? "+" : ""}
+                  {real.netTotal.toFixed(2)}
+                </span>
+                <span className="text-zinc-500">
+                  {real.wins}胜{real.losses}负
+                  {real.batch && ` · 本批 ${real.batch.done}/${real.batch.denominator}`}
+                </span>
+              </Link>
+            ) : null}
 
             <div className="mt-3 flex items-center justify-between text-[11px] text-zinc-600">
               <span>固定虚拟注 $100/笔 · 无本金池 · cl-only 干净账本</span>

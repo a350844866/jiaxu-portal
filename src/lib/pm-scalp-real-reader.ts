@@ -62,6 +62,7 @@ export interface PmScalpRealSnapshot {
     denominator: number
     done: number
     pending: number
+    anchorTs: number
   } | null
   balanceStart: number
   realizedEquity: number
@@ -377,6 +378,7 @@ export function buildRealSnapshot(
     const resumed = Number(anchor.resumed_trades ?? 0)
     const inBatch = built.filter((b) => b.orderTs >= anchorTs)
     batch = {
+      anchorTs,
       capTrades,
       capNotional: Number(caps.max_notional ?? 0),
       resumed,
