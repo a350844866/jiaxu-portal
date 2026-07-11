@@ -43,15 +43,15 @@ function FreshDot({ sec, staleAfter }: { sec: number | null; staleAfter: number 
 }
 
 function VariantTable({ variants }: { variants: PmScalpVariantStat[] }) {
-  // 只按 v3 诚实模型口径展示(exec=3,2026-07-11 04:10 起按真金重校)。
-  // 老执行模型(exec=None/2)假设想买即成、不计深度/竞速,纸面 edge 在真实摩擦下蒸发,
-  // 与实盘不可比 — 全时代累计仅在页尾灰字追溯,不进主表。
+  // 只按当前诚实模型(CURRENT_EXEC=v4,GTC-到窗尾,61 笔真金验证)口径展示。
+  // 更早模型的账已归档出主账本(trades-pre-v4-archive),遗留混入仅页尾灰字追溯。
+  // (字段名 v3 是历史命名,语义 = 当前模型切片)
   const rows = [...variants].sort((a, b) => b.v3.pnl - a.v3.pnl)
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
       <h2 className="text-sm font-medium text-zinc-200">
         变体战绩
-        <span className="ml-2 rounded bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300">v3 诚实模型</span>
+        <span className="ml-2 rounded bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300">v4 诚实模型</span>
         <span className="ml-2 text-xs font-normal text-zinc-500">每笔固定虚拟注 $100(P1 $10)· 变体间独立核算 · 无本金池不复利</span>
       </h2>
       <div className="mt-3 overflow-x-auto">
@@ -194,7 +194,7 @@ export default async function PmScalpPage() {
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-3">
           <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
             总盈亏 ÷ 累计投入
-            <span className="rounded bg-cyan-500/10 px-1 py-px text-[9px] font-medium text-cyan-300">v3</span>
+            <span className="rounded bg-cyan-500/10 px-1 py-px text-[9px] font-medium text-cyan-300">v4</span>
             <span>({snap.totalsV3.settled} 笔)</span>
           </div>
           <div className="mt-1 flex items-baseline gap-1.5">
@@ -220,9 +220,9 @@ export default async function PmScalpPage() {
       </section>
 
       <p className="rounded-xl border border-cyan-800/40 bg-cyan-950/20 px-3 py-2 text-[11px] leading-5 text-zinc-400">
-        <span className="font-medium text-cyan-300">口径:全站仅 v3 诚实执行模型(exec=3)。</span>
-        v3 自 2026-07-11 04:10 起、按 5 笔真金实盘成交重新校准执行(GTC 限价挂单语义 / 有效对手价含合成流动性 / 深度约束 / 竞速),与实盘逐分吻合。
-        旧模型(exec=None/2)假设想买即成、不计深度与竞速,纸面 edge 在真实摩擦下蒸发,<span className="text-zinc-300">与实盘不可比、对实盘判断无参考价值</span>——已从主口径剔除,仅页尾灰字追溯。判定日 {snap.judgmentDate} 只统计 v3。
+        <span className="font-medium text-cyan-300">口径:全站仅 v4 诚实执行模型(exec=4,2026-07-12 起)。</span>
+        v4 按 61 笔真金实盘订单校准:GTC 限价趴到窗尾(v3 的 3s 视界漏掉 20% 真实成交)/ 有效对手价含合成流动性 / 深度约束 / 手续费,与实盘成交判定一致率 60/61。
+        更早模型(exec=None/2/3)的账<span className="text-zinc-300">已整体归档出主账本</span>(paper/trades-pre-v4-archive),对实盘判断无参考价值。判定日 {snap.judgmentDate} 只统计 v4。
       </p>
 
       <p className="rounded-xl border border-zinc-800/60 bg-zinc-900/30 px-3 py-2 text-[11px] leading-5 text-zinc-500">
@@ -247,7 +247,7 @@ export default async function PmScalpPage() {
 
       {legacySettled > 0 && (
         <p className="text-center text-[11px] text-zinc-600">
-          追溯(不作决策口径):全时代累计含 {legacySettled} 笔旧执行模型(exec=None/2)交易,
+          追溯(不作决策口径):主账本内含 {legacySettled} 笔旧执行模型交易(归档遗留),
           单独贡献 <span className={pnlClass(legacyPnl)}>{fmtUsd(legacyPnl)}</span>;
           该口径乐观虚高、与实盘不可比,仅存档。全时代合计 {snap.totals.settled} 笔 {fmtUsd(snap.totals.pnl)}。
         </p>

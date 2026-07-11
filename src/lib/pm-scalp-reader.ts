@@ -16,12 +16,17 @@
 import { promises as fs } from "node:fs"
 import path from "node:path"
 
+/** 当前诚实执行模型版本 — papertrader EXEC_VERSION 同步改这里(账本亦已按代归档) */
+const CURRENT_EXEC = 4
+
 const VARIANT_META: Record<string, { label: string; mode: string }> = {
   N1: { label: "噪声回归 190-240s ≤3bps", mode: "taker" },
   N2: { label: "噪声回归 190-240s ≤6bps", mode: "taker" },
   N3: { label: "噪声回归 240-285s ≤3bps", mode: "taker" },
   N4: { label: "噪声回归 240-285s ≤6bps", mode: "taker" },
+  N4B: { label: "band 0.40-0.48(=实盘批次2配置)", mode: "taker" },
   M3: { label: "maker 对照 240-285s ≤3bps", mode: "maker" },
+  M3B: { label: "maker+band 0.40-0.48(实盘候选)", mode: "maker" },
   N0: { label: "无位移过滤对照 240-285s", mode: "taker" },
   P1: { label: "便士收割 ≤$0.02", mode: "taker" },
   F1: { label: "热门动量 180-270s ≥8bps 买领先侧", mode: "taker" },
@@ -71,7 +76,7 @@ export interface PmScalpVariantStat {
   /** 盈利率 = pnl / settledCost,无已结算时 null */
   roiOnCost: number | null
   open: number
-  /** 仅 exec=3 诚实执行模型(2026-07-11 04:10 起,按 5 笔真金成交重校)的切片 */
+  /** 仅当前诚实执行模型(CURRENT_EXEC)的切片 */
   v3: EraStat
 }
 
@@ -98,7 +103,7 @@ export interface PmScalpSnapshot {
   ledgerSince: string
   judgmentDate: string
   totals: { settled: number; wins: number; pnl: number; open: number; settledCost: number; roiOnCost: number | null }
-  /** 仅 exec=3 诚实模型的合计(判定日应以此为准) */
+  /** 仅当前诚实模型(CURRENT_EXEC)的合计(判定日应以此为准) */
   totalsV3: EraStat
   variants: PmScalpVariantStat[]
   openEntries: PmScalpTradeRow[]
@@ -133,7 +138,7 @@ interface LedgerEntry {
   fee: number
   s?: number
   disp?: number
-  /** 执行模型版本;3 = 2026-07-11 04:10 起按真金重校的诚实模型 */
+  /** 执行模型版本;4 = 2026-07-12 起 GTC-到窗尾视界(61 笔真金验证 60/61 一致) */
   exec?: number
 }
 
@@ -278,7 +283,7 @@ export async function readPmScalpSnapshot(): Promise<PmScalpSnapshot> {
       if (settle.won) stat.wins += 1
       stat.pnl += settle.pnl
       stat.settledCost += cost
-      if (e.exec === 3) {
+      if (e.exec === CURRENT_EXEC) {
         stat.v3.settled += 1
         if (settle.won) stat.v3.wins += 1
         stat.v3.pnl += settle.pnl
@@ -324,7 +329,7 @@ export async function readPmScalpSnapshot(): Promise<PmScalpSnapshot> {
     dataAgeSeconds: latestWin.dataAgeSeconds,
     heartbeatAgeSeconds,
     windowsRecorded: latestWin.windowsRecorded,
-    ledgerSince: "2026-07-10 16:10 (+08, cl-only 干净账本)",
+    ledgerSince: "2026-07-12 00:00 (+08, v4 纪元;更早三代执行模型账已归档 trades-pre-v4-archive)",
     judgmentDate: "2026-07-17",
     totals,
     totalsV3,
