@@ -1,5 +1,5 @@
 "use client"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { Timer, RefreshCw, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -35,8 +35,11 @@ export function PmScalpCard() {
   const [realErr, setRealErr] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const genRef = useRef(0)
 
   const load = useCallback(async () => {
+    // request generation: 慢的旧请求不许覆盖新一轮结果(实钱数据不能回退)
+    const gen = ++genRef.current
     setLoading(true)
     setErr(null)
     // allSettled: 实盘接口失败不拖垮模拟盘展示, 反之亦然
@@ -52,6 +55,7 @@ export function PmScalpCard() {
         return body as PmScalpRealSnapshot
       }),
     ])
+    if (gen !== genRef.current) return // 已有更新一轮在跑, 丢弃本轮结果
     if (paperRes.status === "fulfilled") setData(paperRes.value)
     else setErr("pm-scalp 状态读取失败")
     if (realRes.status === "fulfilled") {

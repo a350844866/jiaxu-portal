@@ -78,7 +78,7 @@ interface PmScalpRealSnapshot {
 
 ### 2. `src/app/api/pm-scalp/real/route.ts`（新）
 
-`GET` → `readPmScalpRealSnapshot()` JSON。与现有 `/api/pm-scalp` 同构（force-dynamic、错误 500 + {error}）。
+`GET` → `readPmScalpRealSnapshot()` JSON。与现有 `/api/pm-scalp` 同构（force-dynamic、错误 **503** + {error}——对齐既有兄弟路由的降级语义）。
 
 ### 3. `/pm-scalp/real/page.tsx`（新，server component，force-dynamic）
 

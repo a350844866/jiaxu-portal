@@ -292,6 +292,137 @@ describe("buildRealSnapshot — 模拟盘 N4 配对", () => {
   })
 })
 
+describe("buildRealSnapshot — 畸形字段防线(code review C1/H2)", () => {
+  it("matched 非数值 → uncertain + malformed-settle 告警, 不污染合计", () => {
+    const snap = buildRealSnapshot(
+      [
+        start(50.941637, T0),
+        order(OID, T0 + 300, T0 + 540),
+        settle(OID, T0 + 300, T0 + 900, true, [takerFill(OID, "0.3", "5")], { matched: "bad" }),
+      ],
+      [], opts,
+    )
+    expect(snap.trades[0].status).toBe("uncertain")
+    expect(snap.netTotal).toBe(0)
+    expect(Number.isFinite(snap.realizedEquity)).toBe(true)
+    expect(snap.alarms.some((a) => a.includes("malformed-settle"))).toBe(true)
+  })
+
+  it("won 是字符串 → uncertain, 不算胜也不算负", () => {
+    const snap = buildRealSnapshot(
+      [
+        start(50.941637, T0),
+        order(OID, T0 + 300, T0 + 540),
+        settle(OID, T0 + 300, T0 + 900, true, [takerFill(OID, "0.3", "5")], { won: "false" }),
+      ],
+      [], opts,
+    )
+    expect(snap.trades[0].status).toBe("uncertain")
+    expect(snap.wins + snap.losses).toBe(0)
+  })
+
+  it("fill 价格 ≥1(份额价域外) → 不算证据 → uncertain", () => {
+    const snap = buildRealSnapshot(
+      [
+        start(50.941637, T0),
+        order(OID, T0 + 300, T0 + 540),
+        settle(OID, T0 + 300, T0 + 900, true, [takerFill(OID, "1.5", "5")]),
+      ],
+      [], opts,
+    )
+    expect(snap.trades[0].status).toBe("uncertain")
+  })
+
+  it("畸形 start 被跳过并告警; 有交易但无有效锚点 → missing-anchor", () => {
+    const snap = buildRealSnapshot(
+      [
+        JSON.stringify({ type: "start", collateral: "junk", ts: T0 }),
+        order(OID, T0 + 300, T0 + 540),
+        settle(OID, T0 + 300, T0 + 900, true, [takerFill(OID, "0.3", "5")]),
+      ],
+      [], opts,
+    )
+    expect(snap.alarms.some((a) => a.includes("malformed-start"))).toBe(true)
+    expect(snap.alarms.some((a) => a.includes("missing-anchor"))).toBe(true)
+    expect(snap.equity).toEqual([]) // 无锚点不画伪曲线
+    expect(Number.isFinite(snap.realizedEquity)).toBe(true)
+  })
+
+  it("字符串 notional 的 pending 单仍计入在途占用上界", () => {
+    const snap = buildRealSnapshot(
+      [start(50.941637, T0), order(OID, T0 + 300, T0 + 540, { notional: "1.7" })],
+      [], opts,
+    )
+    expect(snap.openCostBound).toBeCloseTo(1.7, 4)
+  })
+})
+
+describe("buildRealSnapshot — 检查点时点资格(code review M4)", () => {
+  it("单在检查点之后才结算 → 该检查点无资格, 不发假漂移告警", () => {
+    const snap = buildRealSnapshot(
+      [
+        start(50.941637, T0 - 7200, 0, 5, 12),
+        order(OID, T0 - 7000, T0 - 6900),
+        start(50.941637, T0), // 此刻上一单仍未结算, 余额没变是对的
+        settle(OID, T0 - 7000, T0 + 600, true, [takerFill(OID, "0.3", "5")]), // 结算发生在检查点之后
+      ],
+      [], opts,
+    )
+    expect(snap.alarms).toEqual([])
+  })
+})
+
+describe("buildRealSnapshot — era 严格配对(code review M5/M6)", () => {
+  const W = T0 + 300
+  const real = (paperLines: string[]) =>
+    buildRealSnapshot(
+      [
+        start(50.941637, T0),
+        order(OID, W, T0 + 540),
+        settle(OID, W, T0 + 900, true, [takerFill(OID, "0.3", "5")]),
+      ],
+      paperLines, opts,
+    )
+
+  it("同窗 exec:2 entry 不遮蔽 exec:3 entry", () => {
+    const snap = real([paperEntry(W, 2, 0.9), paperEntry(W, 3, 0.31)])
+    expect(snap.trades[0].sim.kind).toBe("entry")
+    expect(snap.trades[0].sim.px).toBe(0.31)
+    expect(snap.trades[0].simDivergence).toBe("match")
+  })
+
+  it("v3 时代只有 exec:2 记录 → era-mismatch", () => {
+    const snap = real([paperEntry(W, 2, 0.31)])
+    expect(snap.trades[0].sim.kind).toBe("era-mismatch")
+  })
+
+  it("模拟 miss + 实盘未成交 → 不算 sim-missed 背离", () => {
+    const snap = buildRealSnapshot(
+      [
+        start(50.941637, T0),
+        order(OID, W, T0 + 540),
+        JSON.stringify({ type: "nofill", w: W, oid: OID, px: 0.34, ts: T0 + 900 }),
+      ],
+      [paperMiss(W, 3)], opts,
+    )
+    expect(snap.trades[0].sim.kind).toBe("miss")
+    expect(snap.trades[0].simDivergence).toBeNull()
+  })
+
+  it("行键 oid10 存在且唯一(同窗多单 UI 键安全)", () => {
+    const snap = buildRealSnapshot(
+      [
+        start(50.941637, T0),
+        order(OID, W, T0 + 540),
+        order(OID2, W, T0 + 560), // 同窗第二单(不同 oid)
+      ],
+      [], opts,
+    )
+    const keys = snap.trades.map((t) => t.oid10)
+    expect(new Set(keys).size).toBe(2)
+  })
+})
+
 describe("readPmScalpRealSnapshot — fs 壳", () => {
   let dir: string
   const origEnv = process.env.PM_SCALP_DIR

@@ -49,18 +49,20 @@ function SimBadge({ r }: { r: RealTradeRow }) {
       </span>
     )
   // entry
+  // uncertain 时价差是拿挂价退化比较的, 前缀 ~ 明示口径
+  const approx = r.status === "uncertain" ? "~" : ""
   if (r.simDivergence === "side-mismatch")
     return <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-300">方向背离</span>
   if (r.simDivergence === "px-gap")
     return (
       <span className="rounded bg-yellow-500/15 px-1.5 py-0.5 text-[10px] text-yellow-300">
-        价差 模拟{r.sim.px?.toFixed(2)}
+        {approx}价差 模拟{r.sim.px?.toFixed(2)}
       </span>
     )
   if (r.simDivergence === "match")
     return (
       <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-300">
-        贴合 {r.sim.px?.toFixed(2)}
+        {approx}贴合 {r.sim.px?.toFixed(2)}
       </span>
     )
   return <span className="text-[10px] text-zinc-500">模拟 {r.sim.px?.toFixed(2)}</span>
@@ -80,7 +82,8 @@ function EquityCurve({ snap }: { snap: PmScalpRealSnapshot }) {
     return <p className="mt-3 text-xs text-zinc-500">暂无账本数据</p>
 
   const t0 = pts[0].ts
-  const t1 = pts[pts.length - 1].ts
+  // 时间域并入批次锚点: starts 不产生权益点, 但分界线必须落在图内
+  const t1 = Math.max(pts[pts.length - 1].ts, snap.batch?.anchorTs ?? -Infinity)
   const tSpan = Math.max(1, t1 - t0)
   const vals = pts.map((p) => p.balance)
   let lo = Math.min(...vals)
@@ -96,7 +99,10 @@ function EquityCurve({ snap }: { snap: PmScalpRealSnapshot }) {
 
   const d = pts.map((p, i) => `${i === 0 ? "M" : "L"}${x(p.ts).toFixed(1)},${y(p.balance).toFixed(1)}`).join(" ")
   const anchorY = y(snap.balanceStart)
-  const batchX = snap.batch && snap.batch.anchorTs >= t0 ? x(snap.batch.anchorTs) : null
+  const batchX =
+    snap.batch && snap.batch.anchorTs >= t0 && snap.batch.anchorTs <= t1
+      ? x(snap.batch.anchorTs)
+      : null
   const last = pts[pts.length - 1]
   const fmtT = (ts: number) =>
     new Date(ts * 1000).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })
@@ -134,7 +140,7 @@ function EquityCurve({ snap }: { snap: PmScalpRealSnapshot }) {
         {/* 端点直标 */}
         <text
           x={Math.min(x(last.ts), W - PAD.r - 2)}
-          y={y(last.balance) - 8}
+          y={Math.max(PAD.t + 8, y(last.balance) - 8)}
           textAnchor="end"
           fontSize="10"
           fontWeight="600"
@@ -266,7 +272,7 @@ export default async function PmScalpRealPage() {
               </thead>
               <tbody>
                 {snap.trades.map((r) => (
-                  <tr key={r.w} className="border-b border-zinc-800/50 last:border-0">
+                  <tr key={r.oid10} className="border-b border-zinc-800/50 last:border-0">
                     <td className="py-1.5 pr-3 tabular-nums text-zinc-300">{r.windowLabel}</td>
                     <td className={cn("py-1.5 pr-3", r.sideUp ? "text-emerald-300/90" : "text-rose-300/90")}>
                       {r.sideUp ? "Up" : "Down"}
