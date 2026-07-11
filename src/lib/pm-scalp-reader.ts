@@ -32,6 +32,31 @@ const VARIANT_META: Record<string, { label: string; mode: string }> = {
   A1b: { label: "交叉盘套利·Down腿", mode: "taker" },
 }
 
+/** 单一执行模型时代的统计切片(全时代 or 仅 v3 诚实模型) */
+export interface EraStat {
+  settled: number
+  wins: number
+  winrate: number | null
+  pnl: number
+  avgPerTrade: number | null
+  /** 已结算投入(买入成本+手续费),盈利率分母 */
+  settledCost: number
+  /** 盈利率 = pnl / settledCost,无已结算时 null */
+  roiOnCost: number | null
+}
+
+function emptyEra(): EraStat {
+  return { settled: 0, wins: 0, winrate: null, pnl: 0, avgPerTrade: null, settledCost: 0, roiOnCost: null }
+}
+
+function finalizeEra(e: EraStat): void {
+  if (e.settled > 0) {
+    e.winrate = e.wins / e.settled
+    e.avgPerTrade = e.pnl / e.settled
+    e.roiOnCost = e.settledCost > 0 ? e.pnl / e.settledCost : null
+  }
+}
+
 export interface PmScalpVariantStat {
   id: string
   label: string
@@ -46,6 +71,8 @@ export interface PmScalpVariantStat {
   /** 盈利率 = pnl / settledCost,无已结算时 null */
   roiOnCost: number | null
   open: number
+  /** 仅 exec=3 诚实执行模型(2026-07-11 04:10 起,按 5 笔真金成交重校)的切片 */
+  v3: EraStat
 }
 
 export interface PmScalpTradeRow {
@@ -71,6 +98,8 @@ export interface PmScalpSnapshot {
   ledgerSince: string
   judgmentDate: string
   totals: { settled: number; wins: number; pnl: number; open: number; settledCost: number; roiOnCost: number | null }
+  /** 仅 exec=3 诚实模型的合计(判定日应以此为准) */
+  totalsV3: EraStat
   variants: PmScalpVariantStat[]
   openEntries: PmScalpTradeRow[]
   recentTrades: PmScalpTradeRow[]
@@ -104,6 +133,8 @@ interface LedgerEntry {
   fee: number
   s?: number
   disp?: number
+  /** 执行模型版本;3 = 2026-07-11 04:10 起按真金重校的诚实模型 */
+  exec?: number
 }
 
 interface LedgerSettle {
@@ -214,6 +245,7 @@ export async function readPmScalpSnapshot(): Promise<PmScalpSnapshot> {
       settledCost: 0,
       roiOnCost: null,
       open: 0,
+      v3: emptyEra(),
     })
   }
 
@@ -226,7 +258,7 @@ export async function readPmScalpSnapshot(): Promise<PmScalpSnapshot> {
     seenEntry.add(entryKey)
     const stat =
       byVariant.get(e.v) ??
-      ({ id: e.v, label: e.v, mode: "?", settled: 0, wins: 0, winrate: null, pnl: 0, avgPerTrade: null, settledCost: 0, roiOnCost: null, open: 0 } as PmScalpVariantStat)
+      ({ id: e.v, label: e.v, mode: "?", settled: 0, wins: 0, winrate: null, pnl: 0, avgPerTrade: null, settledCost: 0, roiOnCost: null, open: 0, v3: emptyEra() } as PmScalpVariantStat)
     byVariant.set(e.v, stat)
     const settle = settleKey.get(`${e.w}:${e.v}`)
     const row: PmScalpTradeRow = {
@@ -241,10 +273,17 @@ export async function readPmScalpSnapshot(): Promise<PmScalpSnapshot> {
       pnl: settle ? settle.pnl : null,
     }
     if (settle) {
+      const cost = e.px * e.sh + e.fee
       stat.settled += 1
       if (settle.won) stat.wins += 1
       stat.pnl += settle.pnl
-      stat.settledCost += e.px * e.sh + e.fee
+      stat.settledCost += cost
+      if (e.exec === 3) {
+        stat.v3.settled += 1
+        if (settle.won) stat.v3.wins += 1
+        stat.v3.pnl += settle.pnl
+        stat.v3.settledCost += cost
+      }
       settledRows.push(row)
     } else {
       stat.open += 1
@@ -257,20 +296,27 @@ export async function readPmScalpSnapshot(): Promise<PmScalpSnapshot> {
       stat.avgPerTrade = stat.pnl / stat.settled
       stat.roiOnCost = stat.settledCost > 0 ? stat.pnl / stat.settledCost : null
     }
+    finalizeEra(stat.v3)
   }
 
   settledRows.sort((a, b) => b.w - a.w)
   openEntries.sort((a, b) => b.w - a.w)
 
   const totals = { settled: 0, wins: 0, pnl: 0, open: 0, settledCost: 0, roiOnCost: null as number | null }
+  const totalsV3 = emptyEra()
   for (const s of byVariant.values()) {
     totals.settled += s.settled
     totals.wins += s.wins
     totals.pnl += s.pnl
     totals.open += s.open
     totals.settledCost += s.settledCost
+    totalsV3.settled += s.v3.settled
+    totalsV3.wins += s.v3.wins
+    totalsV3.pnl += s.v3.pnl
+    totalsV3.settledCost += s.v3.settledCost
   }
   if (totals.settledCost > 0) totals.roiOnCost = totals.pnl / totals.settledCost
+  finalizeEra(totalsV3)
 
   return {
     ok: true,
@@ -281,6 +327,7 @@ export async function readPmScalpSnapshot(): Promise<PmScalpSnapshot> {
     ledgerSince: "2026-07-10 16:10 (+08, cl-only 干净账本)",
     judgmentDate: "2026-07-17",
     totals,
+    totalsV3,
     variants: [...byVariant.values()],
     openEntries: openEntries.slice(0, 12),
     recentTrades: settledRows.slice(0, 20),

@@ -43,9 +43,17 @@ function FreshDot({ sec, staleAfter }: { sec: number | null; staleAfter: number 
 }
 
 function VariantTable({ variants }: { variants: PmScalpVariantStat[] }) {
+  // 只按 v3 诚实模型口径展示(exec=3,2026-07-11 04:10 起按真金重校)。
+  // 老执行模型(exec=None/2)假设想买即成、不计深度/竞速,纸面 edge 在真实摩擦下蒸发,
+  // 与实盘不可比 — 全时代累计仅在页尾灰字追溯,不进主表。
+  const rows = [...variants].sort((a, b) => b.v3.pnl - a.v3.pnl)
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
-      <h2 className="text-sm font-medium text-zinc-200">变体战绩<span className="ml-2 text-xs font-normal text-zinc-500">每笔固定虚拟注 $100(P1 $10)· 变体间独立核算 · 无本金池不复利</span></h2>
+      <h2 className="text-sm font-medium text-zinc-200">
+        变体战绩
+        <span className="ml-2 rounded bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300">v3 诚实模型</span>
+        <span className="ml-2 text-xs font-normal text-zinc-500">每笔固定虚拟注 $100(P1 $10)· 变体间独立核算 · 无本金池不复利</span>
+      </h2>
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[560px] text-xs">
           <thead>
@@ -61,25 +69,25 @@ function VariantTable({ variants }: { variants: PmScalpVariantStat[] }) {
             </tr>
           </thead>
           <tbody>
-            {variants.map((v) => (
+            {rows.map((v) => (
               <tr key={v.id} className="border-b border-zinc-800/50 last:border-0">
                 <td className="py-1.5 pr-3 font-mono text-zinc-200">{v.id}</td>
                 <td className="py-1.5 pr-3 text-zinc-400">
                   {v.label}
                   <span className="ml-1.5 text-zinc-600">{v.mode}</span>
                 </td>
-                <td className="py-1.5 pr-3 text-right tabular-nums text-zinc-300">{v.settled}</td>
+                <td className="py-1.5 pr-3 text-right tabular-nums text-zinc-300">{v.v3.settled || "—"}</td>
                 <td className="py-1.5 pr-3 text-right tabular-nums text-zinc-300">
-                  {v.winrate == null ? "—" : `${(v.winrate * 100).toFixed(0)}%`}
+                  {v.v3.winrate == null ? "—" : `${(v.v3.winrate * 100).toFixed(0)}%`}
                 </td>
-                <td className={cn("py-1.5 pr-3 text-right font-semibold tabular-nums", pnlClass(v.pnl))}>
-                  {fmtUsd(v.pnl)}
+                <td className={cn("py-1.5 pr-3 text-right font-semibold tabular-nums", pnlClass(v.v3.settled ? v.v3.pnl : null))}>
+                  {v.v3.settled ? fmtUsd(v.v3.pnl) : "—"}
                 </td>
-                <td className={cn("py-1.5 pr-3 text-right tabular-nums", pnlClass(v.roiOnCost))}>
-                  {fmtPct(v.roiOnCost)}
+                <td className={cn("py-1.5 pr-3 text-right tabular-nums", pnlClass(v.v3.roiOnCost))}>
+                  {v.v3.settled ? fmtPct(v.v3.roiOnCost) : "—"}
                 </td>
-                <td className={cn("py-1.5 pr-3 text-right tabular-nums", pnlClass(v.avgPerTrade))}>
-                  {fmtUsd(v.avgPerTrade)}
+                <td className={cn("py-1.5 pr-3 text-right tabular-nums", pnlClass(v.v3.avgPerTrade))}>
+                  {v.v3.settled ? fmtUsd(v.v3.avgPerTrade) : "—"}
                 </td>
                 <td className="py-1.5 text-right tabular-nums text-zinc-300">{v.open || "—"}</td>
               </tr>
@@ -139,7 +147,10 @@ function TradesTable({ title, rows, empty }: { title: string; rows: PmScalpTrade
 
 export default async function PmScalpPage() {
   const snap = await readPmScalpSnapshot()
-  const winrate = snap.totals.settled > 0 ? snap.totals.wins / snap.totals.settled : null
+  const v3Winrate = snap.totalsV3.settled > 0 ? snap.totalsV3.wins / snap.totalsV3.settled : null
+  // 全时代累计(含已废弃执行模型) — 仅页尾灰字追溯,不作决策口径
+  const legacyPnl = snap.totals.pnl - snap.totalsV3.pnl
+  const legacySettled = snap.totals.settled - snap.totalsV3.settled
 
   return (
     <main className="relative min-h-screen space-y-6 bg-zinc-950 p-4 sm:p-6 lg:p-8">
@@ -181,16 +192,20 @@ export default async function PmScalpPage() {
           <div className="text-[11px] text-zinc-500">watchdog 每 5min 保活</div>
         </div>
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-3">
-          <div className="text-[11px] text-zinc-500">总盈亏 ÷ 累计投入({snap.totals.settled} 笔已结算)</div>
+          <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+            总盈亏 ÷ 累计投入
+            <span className="rounded bg-cyan-500/10 px-1 py-px text-[9px] font-medium text-cyan-300">v3</span>
+            <span>({snap.totalsV3.settled} 笔)</span>
+          </div>
           <div className="mt-1 flex items-baseline gap-1.5">
-            <span className={cn("text-sm font-semibold tabular-nums", pnlClass(snap.totals.pnl))}>
-              {fmtUsd(snap.totals.pnl)}
+            <span className={cn("text-sm font-semibold tabular-nums", pnlClass(snap.totalsV3.settled ? snap.totalsV3.pnl : null))}>
+              {snap.totalsV3.settled ? fmtUsd(snap.totalsV3.pnl) : "—"}
             </span>
-            <span className="text-xs tabular-nums text-zinc-500">/ ${snap.totals.settledCost.toFixed(0)} 流水</span>
+            <span className="text-xs tabular-nums text-zinc-500">/ ${snap.totalsV3.settledCost.toFixed(0)} 流水</span>
           </div>
           <div className="text-[11px] text-zinc-500">
-            <span className={cn("font-semibold", pnlClass(snap.totals.roiOnCost))}>盈利率 {fmtPct(snap.totals.roiOnCost)}</span>
-            (每 $1 投入)· 胜率 {winrate == null ? "—" : `${(winrate * 100).toFixed(0)}%`} · 持仓 {snap.totals.open}
+            <span className={cn("font-semibold", pnlClass(snap.totalsV3.roiOnCost))}>盈利率 {fmtPct(snap.totalsV3.roiOnCost)}</span>
+            (每 $1 投入)· 胜率 {v3Winrate == null ? "—" : `${(v3Winrate * 100).toFixed(0)}%`} · 持仓 {snap.totals.open}
           </div>
         </div>
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-3">
@@ -203,6 +218,12 @@ export default async function PmScalpPage() {
           </div>
         </div>
       </section>
+
+      <p className="rounded-xl border border-cyan-800/40 bg-cyan-950/20 px-3 py-2 text-[11px] leading-5 text-zinc-400">
+        <span className="font-medium text-cyan-300">口径:全站仅 v3 诚实执行模型(exec=3)。</span>
+        v3 自 2026-07-11 04:10 起、按 5 笔真金实盘成交重新校准执行(GTC 限价挂单语义 / 有效对手价含合成流动性 / 深度约束 / 竞速),与实盘逐分吻合。
+        旧模型(exec=None/2)假设想买即成、不计深度与竞速,纸面 edge 在真实摩擦下蒸发,<span className="text-zinc-300">与实盘不可比、对实盘判断无参考价值</span>——已从主口径剔除,仅页尾灰字追溯。判定日 {snap.judgmentDate} 只统计 v3。
+      </p>
 
       <p className="rounded-xl border border-zinc-800/60 bg-zinc-900/30 px-3 py-2 text-[11px] leading-5 text-zinc-500">
         <span className="text-zinc-400">资金口径:</span>没有固定本金池——每笔独立投入固定虚拟注 $100(P1 $10),含买入成本与 taker 手续费,持有到窗口结算,不复利。
@@ -223,6 +244,14 @@ export default async function PmScalpPage() {
         rows={snap.recentTrades}
         empty={`还没有已结算交易 — 干净账本自 ${snap.ledgerSince} 起从零累积`}
       />
+
+      {legacySettled > 0 && (
+        <p className="text-center text-[11px] text-zinc-600">
+          追溯(不作决策口径):全时代累计含 {legacySettled} 笔旧执行模型(exec=None/2)交易,
+          单独贡献 <span className={pnlClass(legacyPnl)}>{fmtUsd(legacyPnl)}</span>;
+          该口径乐观虚高、与实盘不可比,仅存档。全时代合计 {snap.totals.settled} 笔 {fmtUsd(snap.totals.pnl)}。
+        </p>
+      )}
 
       <footer className="pb-4 text-center text-[11px] text-zinc-600">
         数据:家服 /data/pm-scalp(recorder 秒级采集 + papertrader 模拟执行)· 账本 {snap.ledgerSince} · 仅模拟研究,非投资建议
