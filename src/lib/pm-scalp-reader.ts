@@ -33,6 +33,7 @@ const VARIANT_META: Record<string, { label: string; mode: string }> = {
   E1: { label: "早段失真+8c反弹卖出(原始版)", mode: "taker" },
   B1a: { label: "双边锁定·腿1(落后侧≤.44)", mode: "taker" },
   B1b: { label: "双边锁定·腿2(合计≤.97)", mode: "taker" },
+  B1S: { label: "B1b单飞·影子腿报信裸买对侧(前向専用)", mode: "taker" },
   A1a: { label: "交叉盘套利·Up腿", mode: "taker" },
   A1b: { label: "交叉盘套利·Down腿", mode: "taker" },
 }
@@ -306,6 +307,45 @@ export async function readPmScalpSnapshot(): Promise<PmScalpSnapshot> {
 
   settledRows.sort((a, b) => b.w - a.w)
   openEntries.sort((a, b) => b.w - a.w)
+
+  // 配对腿合并显示:两条腿是同一策略的两半,分行显示会造出"半场比分"假象
+  // (B1b 曾因此被误读为全场最佳)。合并行只报净额;腿级胜率无意义(锁定对必一赢一输)
+  // 故 winrate=null;逐单明细表仍保留分腿记录。
+  const PAIRS: Record<string, { legs: [string, string]; label: string; mode: string }> = {
+    B1: { legs: ["B1a", "B1b"], label: "双边锁定·配对净额(先买后补,腿见明细)", mode: "pair" },
+    A1: { legs: ["A1a", "A1b"], label: "交叉盘套利·配对净额(同秒双腿)", mode: "pair" },
+    SL1: { legs: ["SL1a", "SL1b"], label: "瞬时双锁·配对净额(同秒,费后门控)", mode: "pair" },
+  }
+  const mergeEra = (a: EraStat, b: EraStat): EraStat => {
+    const settled = Math.max(a.settled, b.settled)
+    const pnl = a.pnl + b.pnl
+    const settledCost = a.settledCost + b.settledCost
+    return {
+      settled,
+      wins: 0,
+      winrate: null,
+      pnl,
+      avgPerTrade: settled > 0 ? pnl / settled : null,
+      settledCost,
+      roiOnCost: settledCost > 0 ? pnl / settledCost : null,
+    }
+  }
+  for (const [pid, cfg] of Object.entries(PAIRS)) {
+    const a = byVariant.get(cfg.legs[0])
+    const b = byVariant.get(cfg.legs[1])
+    if (!a || !b) continue
+    const merged: PmScalpVariantStat = {
+      id: pid,
+      label: cfg.label,
+      mode: cfg.mode,
+      ...mergeEra(a, b),
+      open: a.open + b.open,
+      v3: mergeEra(a.v3, b.v3),
+    }
+    byVariant.delete(cfg.legs[0])
+    byVariant.delete(cfg.legs[1])
+    byVariant.set(pid, merged)
+  }
 
   const totals = { settled: 0, wins: 0, pnl: 0, open: 0, settledCost: 0, roiOnCost: null as number | null }
   const totalsV3 = emptyEra()
