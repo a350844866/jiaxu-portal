@@ -34,6 +34,9 @@ const VARIANT_META: Record<string, { label: string; mode: string }> = {
   B1a: { label: "双边锁定·腿1(落后侧≤.44)", mode: "taker" },
   B1b: { label: "双边锁定·腿2(合计≤.97)", mode: "taker" },
   B1S: { label: "B1b单飞·影子腿报信裸买对侧(前向専用)", mode: "taker" },
+  VN1: { label: "终局·波动率归一价值 s282(前向専用)", mode: "taker" },
+  C1: { label: "终局收敛·护栏版 s282-292(前向専用)", mode: "taker" },
+  C1M: { label: "终局收敛·maker实验(3s TTL,前向専用)", mode: "maker" },
   A1a: { label: "交叉盘套利·Up腿", mode: "taker" },
   A1b: { label: "交叉盘套利·Down腿", mode: "taker" },
 }
