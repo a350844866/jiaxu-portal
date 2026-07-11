@@ -302,7 +302,10 @@ export function buildRealSnapshot(
       certain && matched ? lots.reduce((a, l) => a + (l.maker ? l.size : 0), 0) / matched : null
 
     // ---- 模拟盘配对（era 严格: v3 时代只认 exec:3, 更早一律 era-mismatch） ----
-    const simRec = simByW.get(order.w as number)
+    // 配对基准是 paper N4;带 strategy 标签且非 N4 的实盘单(如 C1 探针)不可比,
+    // 直接跳过配对,避免假 side/px 背离标签 [Codex#8 2026-07-12]
+    const stratTag = typeof order.strategy === "string" ? order.strategy : null
+    const simRec = stratTag && stratTag !== "N4" ? undefined : simByW.get(order.w as number)
     let sim: RealTradeRow["sim"] = { kind: "none" }
     let simDivergence: RealTradeRow["simDivergence"] = null
     const v3Era = orderTs >= EXEC_V3_SINCE
