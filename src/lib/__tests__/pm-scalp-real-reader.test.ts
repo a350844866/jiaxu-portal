@@ -203,9 +203,62 @@ describe("buildRealSnapshot — 权益曲线与检查点", () => {
       ],
       [], opts,
     )
-    expect(snap.equity.map((p) => p.balance)).toEqual([50.941637, expect.closeTo(54.368137, 3)])
+    // [SL1 2026-07-12] start 也是链上实测锚点: 曲线在其处重锚（吻合时值不变）
+    expect(snap.equity.map((p) => p.balance)).toEqual([
+      50.941637,
+      expect.closeTo(54.368137, 3),
+      expect.closeTo(54.368137, 3),
+    ])
     expect(snap.alarms).toEqual([])
     expect(snap.balanceStart).toBe(50.941637)
+  })
+
+  it("dump settle(src:dump 无 fills_sample)用 pnl−fees 进权益, 不降级 uncertain", () => {
+    const snap = buildRealSnapshot(
+      [
+        start(29.51, T0, 0, 5, 12),
+        order(OID, T0 + 100, T0 + 150, { strategy: "SL1", batch: "sl1-x", pair: T0 + 100 }),
+        settle(OID, T0 + 100, T0 + 400, false, undefined,
+          { src: "dump", pnl: -1.25, fees: 0.11, sold: 5, proceeds: 0.5 }),
+      ],
+      [], opts,
+    )
+    expect(snap.uncertainCount).toBe(0)
+    expect(snap.trades[0].status).toBe("lost")
+    expect(snap.trades[0].netPnl).toBeCloseTo(-1.36, 6)
+    expect(snap.trades[0].fee).toBeCloseTo(0.11, 6)
+  })
+
+  it("end 记录的 collateral_end 是终点锚: realizedEquity 精确等于链上", () => {
+    const snap = buildRealSnapshot(
+      [
+        start(29.51, T0, 0, 5, 12),
+        order(OID, T0 + 100, T0 + 150, { strategy: "SL1" }),
+        settle(OID, T0 + 100, T0 + 400, false, undefined,
+          { src: "dump", pnl: -1.25, fees: 0.11 }),
+        JSON.stringify({ type: "end", trades: 1, spent: 4.3, collateral_start: 29.51,
+          collateral_end: 29.81, ts: T0 + 500 }),
+      ],
+      [], opts,
+    )
+    // 保守口径累计 29.51−1.36=28.15, 但 end 锚重锚到链上 29.81
+    expect(snap.realizedEquity).toBeCloseTo(29.81, 6)
+    expect(snap.equity[snap.equity.length - 1].balance).toBeCloseTo(29.81, 6)
+  })
+
+  it("caps.max_pairs 批次按对(distinct 窗口)计", () => {
+    const snap = buildRealSnapshot(
+      [
+        JSON.stringify({ type: "start", collateral: 29.51, resumed_trades: 66,
+          caps: { max_pairs: 10, max_notional: 235, loss_stop: 2 }, ts: T0 }),
+        order(OID, T0 + 100, T0 + 150, { strategy: "SL1" }),
+        order(OID2, T0 + 100, T0 + 151, { strategy: "SL1" }),
+      ],
+      [], opts,
+    )
+    expect(snap.batch?.capTrades).toBe(10)
+    expect(snap.batch?.denominator).toBe(10)
+    expect(snap.batch?.done).toBe(1) // 同窗两腿 = 1 对
   })
 
   it("start 检查点偏差 >0.01 且无 pending → checkpoint 告警", () => {

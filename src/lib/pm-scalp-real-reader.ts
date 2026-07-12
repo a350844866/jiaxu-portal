@@ -198,6 +198,11 @@ export function buildRealSnapshot(
   }
   const byOid = new Map<string, TradeState>()
   const starts: Rec[] = []
+  // [SL1 2026-07-12] 链上实测锚点: start.collateral 与 end.collateral_end 都是
+  // 执行器当场从链上读的真值。账本 pnl/fees 是刻意保守口径（dump proceeds=限价、
+  // fee=taker 模型上限），全程累加会系统性低于钱包 —— 权益曲线在每个锚点重锚，
+  // 段内才用 netPnl 增量，批次结束后显示值精确等于链上。
+  const anchors: { ts: number; col: number }[] = []
   let lastEventTs: number | null = null
 
   for (const d of recs) {
@@ -208,8 +213,16 @@ export function buildRealSnapshot(
         // 锚点必须有效才能参与权益计算（治伪造 $0 锚点/NaN 传播）
         const col = finite(d.collateral)
         const sTs = finite(d.ts)
-        if (col != null && col > 0 && sTs != null && sTs > 0) starts.push(d)
-        else alarms.push(`malformed-start ts=${numSafe(d.ts)}`)
+        if (col != null && col > 0 && sTs != null && sTs > 0) {
+          starts.push(d)
+          anchors.push({ ts: sTs, col })
+        } else alarms.push(`malformed-start ts=${numSafe(d.ts)}`)
+        break
+      }
+      case "end": {
+        const col = finite(d.collateral_end)
+        const eTs = finite(d.ts)
+        if (col != null && col > 0 && eTs != null && eTs > 0) anchors.push({ ts: eTs, col })
         break
       }
       case "order": {
@@ -280,6 +293,20 @@ export function buildRealSnapshot(
         status = "uncertain"
         matched = null
         alarms.push(`malformed-settle oid=${oidShort(oid)} w=${numSafe(order.w)}`)
+      } else if (terminal.src === "dump") {
+        // [SL1 2026-07-12] unwind/remnant settle（recon_sl1 六轮对抗审口径）:
+        // 成交证据在 sell_order 链而非 fills_sample；记录自带权威 raw pnl 与
+        // fees（taker 模型），reader 直接采用 pnl - fees，字段畸形仍降级。
+        const pnl = finite(terminal.pnl)
+        if (pnl == null) {
+          status = "uncertain"
+          matched = null
+          alarms.push(`malformed-dump-settle oid=${oidShort(oid)} w=${numSafe(order.w)}`)
+        } else {
+          status = won ? "won" : "lost"
+          fee = finite(terminal.fees) ?? 0
+          netPnl = pnl - (fee ?? 0)
+        }
       } else {
         lots = ownedLots(terminal.fills_sample, oid)
         const ownedSize = lots.reduce((a, l) => a + l.size, 0)
@@ -368,20 +395,36 @@ export function buildRealSnapshot(
     .map((b) => ({ ts: b.ts, delta: b.row.netPnl as number }))
     .sort((a, b) => a.ts - b.ts)
 
+  // 权益曲线: 锚点重锚 + 段内增量（锚点=链上实测, 见 anchors 注释）
+  anchors.sort((a, b) => a.ts - b.ts)
   const equity: { ts: number; balance: number }[] = []
-  if (starts.length) {
-    let bal = balanceStart
-    equity.push({ ts: finite(starts[0].ts) as number, balance: bal })
+  if (anchors.length) {
+    let bal = anchors[0].col
+    let ai = 0
+    equity.push({ ts: anchors[0].ts, balance: bal })
     for (const e of events) {
+      while (ai + 1 < anchors.length && anchors[ai + 1].ts <= e.ts) {
+        ai++
+        bal = anchors[ai].col
+        equity.push({ ts: anchors[ai].ts, balance: bal })
+      }
       bal += e.delta
       equity.push({ ts: e.ts, balance: bal })
     }
+    while (ai + 1 < anchors.length) {
+      ai++
+      bal = anchors[ai].col
+      equity.push({ ts: anchors[ai].ts, balance: bal })
+    }
   }
+  const lastBalance = equity.length ? equity[equity.length - 1].balance : balanceStart
 
-  // start 检查点: 只在"该时点"所有先前单都已 certain 落定时才有资格校验
-  // （治用最终状态误判检查点时点状态 → 假漂移告警）
+  // start 检查点: 上一锚以来所有单 certain 落定、且段内无保守口径的 dump settle
+  // 时才有资格校验（dump 段的漂移是口径差, 不是账目错）
   for (let i = 1; i < starts.length; i++) {
     const sTs = finite(starts[i].ts) as number
+    const prev = anchors.filter((a) => a.ts < sTs).pop()
+    if (!prev) continue
     const openAtCheckpoint = built.some(
       (b) =>
         b.orderTs < sTs &&
@@ -391,8 +434,10 @@ export function buildRealSnapshot(
           b.row.status === "unresolved"),
     )
     if (openAtCheckpoint) continue
-    const expected =
-      balanceStart + events.filter((e) => e.ts <= sTs).reduce((a, e) => a + e.delta, 0)
+    const seg = built.filter((b) => b.ts > prev.ts && b.ts <= sTs)
+    // dump settle（有 netPnl 但无 lots 证据）= 保守口径, 段内出现即跳过校验
+    if (seg.some((b) => b.row.netPnl != null && b.row.lots.length === 0)) continue
+    const expected = prev.col + seg.reduce((a, b) => a + (b.row.netPnl ?? 0), 0)
     const col = finite(starts[i].collateral) as number
     if (Math.abs(col - expected) > 0.01) alarms.push(`checkpoint-drift ts=${sTs}`)
   }
@@ -428,16 +473,20 @@ export function buildRealSnapshot(
     const anchor = starts[starts.length - 1]
     const caps = anchor.caps ?? {}
     const anchorTs = finite(anchor.ts) as number
-    const capTrades = finite(caps.max_trades) ?? 0
-    const resumed = finite(anchor.resumed_trades) ?? 0
+    // [SL1 2026-07-12] 配对策略的批次以"对"（窗口）计: caps.max_pairs 存在时
+    // denominator = 对数上限、done = 批内 distinct 窗口数, resumed 不适用置 0
+    const pairMode = caps.max_trades == null && caps.max_pairs != null
+    const capTrades = finite(caps.max_trades) ?? finite(caps.max_pairs) ?? 0
+    const resumed = pairMode ? 0 : (finite(anchor.resumed_trades) ?? 0)
     const inBatch = built.filter((b) => b.orderTs >= anchorTs)
+    const done = pairMode ? new Set(inBatch.map((b) => b.row.w)).size : inBatch.length
     batch = {
       anchorTs,
       capTrades,
       capNotional: finite(caps.max_notional) ?? 0,
       resumed,
-      denominator: Math.max(0, capTrades - resumed),
-      done: inBatch.length,
+      denominator: pairMode ? capTrades : Math.max(0, capTrades - resumed),
+      done,
       pending: inBatch.filter((b) => b.row.status === "pending").length,
     }
   }
@@ -450,7 +499,7 @@ export function buildRealSnapshot(
       lastEventTs != null ? Math.max(0, Math.round(opts.nowSec - lastEventTs)) : null,
     batch,
     balanceStart,
-    realizedEquity: balanceStart + netTotal,
+    realizedEquity: lastBalance,
     openCostBound: openBound,
     uncertainCount,
     netTotal,
