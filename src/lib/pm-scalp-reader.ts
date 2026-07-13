@@ -398,7 +398,11 @@ export async function readPmScalpSnapshot(): Promise<PmScalpSnapshot> {
     judgmentDate: "2026-07-17",
     totals,
     totalsV3,
-    variants: [...byVariant.values()],
+    // v5 纪元只带 4 幸存者 — 旧纪元变体(N 族/M3/P1/F1/E1/B1/A1/SL1)在当前
+    // 账本里零活动,不再渲染空行;它们的结论与归档见 vault pm-scalp 页
+    variants: [...byVariant.values()].filter(
+      (v) => v.settled > 0 || v.open > 0 || v.v3.settled > 0,
+    ),
     openEntries: openEntries.slice(0, 12),
     recentTrades: settledRows.slice(0, 20),
     basis: latestWin.basis,
