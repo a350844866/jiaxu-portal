@@ -16,8 +16,9 @@
 import { promises as fs } from "node:fs"
 import path from "node:path"
 
-/** 当前诚实执行模型版本 — papertrader EXEC_VERSION 同步改这里(账本亦已按代归档) */
-const CURRENT_EXEC = 4
+/** 当前诚实执行模型版本 — v5 = 2026-07-12 深夜 tick 纪元(ticksim 关窗回放,
+ *  papertrader 已退役;账本由 paper/windows-v5/ 工件重建,行内含结算) */
+const CURRENT_EXEC = 5
 
 const VARIANT_META: Record<string, { label: string; mode: string }> = {
   N1: { label: "噪声回归 190-240s ≤3bps", mode: "taker" },
@@ -36,6 +37,8 @@ const VARIANT_META: Record<string, { label: string; mode: string }> = {
   B1S: { label: "B1b单飞·影子腿报信裸买对侧(前向専用)", mode: "taker" },
   VN1: { label: "终局·波动率归一价值 s282(前向専用)", mode: "taker" },
   C1: { label: "终局收敛·护栏版 s282-292(前向専用)", mode: "taker" },
+  "C1-T1000": { label: "终局收敛·tick原生 T=1000ms(primary,冻结)", mode: "taker" },
+  "C1-T500": { label: "终局收敛·tick原生 T=500ms(exploratory)", mode: "taker" },
   C1M: { label: "终局收敛·maker实验(3s TTL,前向専用)", mode: "maker" },
   A1a: { label: "交叉盘套利·Up腿", mode: "taker" },
   A1b: { label: "交叉盘套利·Down腿", mode: "taker" },
@@ -163,7 +166,19 @@ async function readLedger(): Promise<{ entries: LedgerEntry[]; settles: LedgerSe
       if (!line.trim()) continue
       try {
         const d = JSON.parse(line)
-        if (d.type === "entry") entries.push(d)
+        if (d.exec === 5 && d.type === "entry") {
+          // v5 tick 纪元:行内含结算(settle 字段),nofill/unusable 没有 px/sh —
+          // 只把 settled(成 entry+settle 对)与 pending(成 open entry,px=限价)
+          // 映射进 v4 页面契约;nofill/unusable_window 不是持仓,跳过
+          if (d.settle === "settled") {
+            entries.push({ type: "entry", w: d.w, v: d.v, side_up: d.side_up,
+              px: d.px, sh: d.sh, fee: d.fee, s: d.s, exec: 5 })
+            settles.push({ type: "settle", w: d.w, v: d.v, won: d.won, pnl: d.net })
+          } else if (d.settle === "pending") {
+            entries.push({ type: "entry", w: d.w, v: d.v, side_up: d.side_up,
+              px: d.limit, sh: 5, fee: 0, s: d.s, exec: 5 })
+          }
+        } else if (d.type === "entry") entries.push(d)
         else if (d.type === "settle") settles.push(d)
       } catch {
         /* skip malformed line */
@@ -220,11 +235,18 @@ async function readLatestWindow(): Promise<{
 }
 
 async function readHeartbeat(): Promise<number | null> {
+  // v5: papertrader(与其 heartbeat 文件)已退役 — 活性 = 最新关窗工件 mtime
+  // (cron runner 每 2min 扫,健康时新工件滞后关窗 <5min)
   try {
-    const raw = await fs.readFile(path.join(scalpDir(), "paper", "heartbeat"), "utf8")
-    const ts = Number(raw.trim())
-    if (!Number.isFinite(ts) || ts <= 0) return null
-    return Math.max(0, Math.round(Date.now() / 1000 - ts))
+    const dir = path.join(scalpDir(), "paper", "windows-v5")
+    const files = (await fs.readdir(dir)).filter((f) => f.endsWith(".v5.json"))
+    if (files.length === 0) return null
+    let newest = 0
+    for (const f of files) {
+      const st = await fs.stat(path.join(dir, f))
+      if (st.mtimeMs > newest) newest = st.mtimeMs
+    }
+    return Math.max(0, Math.round((Date.now() - newest) / 1000))
   } catch {
     return null
   }
@@ -372,7 +394,7 @@ export async function readPmScalpSnapshot(): Promise<PmScalpSnapshot> {
     dataAgeSeconds: latestWin.dataAgeSeconds,
     heartbeatAgeSeconds,
     windowsRecorded: latestWin.windowsRecorded,
-    ledgerSince: "2026-07-12 00:00 (+08, v4 纪元;更早三代执行模型账已归档 trades-pre-v4-archive)",
+    ledgerSince: "2026-07-13 (+08, v5 tick 纪元;headline=1500ms 悲观口径;v4 及更早账已归档)",
     judgmentDate: "2026-07-17",
     totals,
     totalsV3,
