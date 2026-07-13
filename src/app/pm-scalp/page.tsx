@@ -43,16 +43,16 @@ function FreshDot({ sec, staleAfter }: { sec: number | null; staleAfter: number 
 }
 
 function VariantTable({ variants }: { variants: PmScalpVariantStat[] }) {
-  // 只按当前诚实模型(CURRENT_EXEC=v4,GTC-到窗尾,61 笔真金验证)口径展示。
-  // 更早模型的账已归档出主账本(trades-pre-v4-archive),遗留混入仅页尾灰字追溯。
+  // 只按当前诚实模型(CURRENT_EXEC=5,tick 级关窗回放)口径展示。
+  // 更早模型的账已归档出主账本(trades-pre-v5-archive 等),遗留混入仅页尾灰字追溯。
   // (字段名 v3 是历史命名,语义 = 当前模型切片)
   const rows = [...variants].sort((a, b) => b.v3.pnl - a.v3.pnl)
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
       <h2 className="text-sm font-medium text-zinc-200">
         变体战绩
-        <span className="ml-2 rounded bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300">v4 诚实模型</span>
-        <span className="ml-2 text-xs font-normal text-zinc-500">每笔固定虚拟注 $100(P1 $10)· 变体间独立核算 · 无本金池不复利</span>
+        <span className="ml-2 rounded bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300">v5 tick 纪元</span>
+        <span className="ml-2 text-xs font-normal text-zinc-500">每笔 5 股(对齐真金执行器)· 1500ms 延迟悲观口径 · 变体间独立核算</span>
       </h2>
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[560px] text-xs">
@@ -194,7 +194,7 @@ export default async function PmScalpPage() {
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-3">
           <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
             总盈亏 ÷ 累计投入
-            <span className="rounded bg-cyan-500/10 px-1 py-px text-[9px] font-medium text-cyan-300">v4</span>
+            <span className="rounded bg-cyan-500/10 px-1 py-px text-[9px] font-medium text-cyan-300">v5</span>
             <span>({snap.totalsV3.settled} 笔)</span>
           </div>
           <div className="mt-1 flex items-baseline gap-1.5">
@@ -220,14 +220,15 @@ export default async function PmScalpPage() {
       </section>
 
       <p className="rounded-xl border border-cyan-800/40 bg-cyan-950/20 px-3 py-2 text-[11px] leading-5 text-zinc-400">
-        <span className="font-medium text-cyan-300">口径:全站仅 v4 诚实执行模型(exec=4,2026-07-12 起)。</span>
-        v4 按 61 笔真金实盘订单校准:GTC 限价趴到窗尾(v3 的 3s 视界漏掉 20% 真实成交)/ 有效对手价含合成流动性 / 深度约束 / 手续费,与实盘成交判定一致率 60/61。
-        更早模型(exec=None/2/3)的账<span className="text-zinc-300">已整体归档出主账本</span>(paper/trades-pre-v4-archive),对实盘判断无参考价值。判定日 {snap.judgmentDate} 只统计 v4。
+        <span className="font-medium text-cyan-300">口径:v5 tick 纪元(exec=5,2026-07-13 起,tick 级关窗回放)。</span>
+        成交判定 = 全量订单簿重建 + marketable-limit 生命周期(到达走簿→3s 静置悲观队列→撤单)+ 延迟竞速(headline 1500ms,300/800ms 敏感档另记);
+        tape×tick 双采集互证 fail-closed,不可信窗整窗拒记。变体池仅 4 幸存者(C1 家族/VN1/B1S),定义冻结于 SPEC-ticksim-v5。
+        更早模型(exec≤4,papertrader 已退役)的账<span className="text-zinc-300">已整体归档出主账本</span>,对实盘判断无参考价值。判定日 {snap.judgmentDate} 主判 C1 真金,v5 前向为参考。
       </p>
 
       <p className="rounded-xl border border-zinc-800/60 bg-zinc-900/30 px-3 py-2 text-[11px] leading-5 text-zinc-500">
-        <span className="text-zinc-400">资金口径:</span>没有固定本金池——每笔独立投入固定虚拟注 $100(P1 $10),含买入成本与 taker 手续费,持有到窗口结算,不复利。
-        「累计投入」是<span className="text-zinc-400">流水</span>而非占用资金:多变体同窗全开时同刻在场可达 ~$1,200(极端)。
+        <span className="text-zinc-400">资金口径:</span>没有固定本金池——每笔独立投入 5 股(约 $2.5-5,对齐真金执行器规格),含买入成本与 taker 手续费(maker 部分零费),持有到窗口结算,不复利。
+        「累计投入」是<span className="text-zinc-400">流水</span>而非占用资金。
         <span className="text-zinc-400">盈利率 = 累计盈亏 ÷ 累计投入</span>,即按投入加权的单笔平均收益率(每投入 $1 平均赚回多少),不是"账户本金涨幅"。
         样本注意:多个变体常在同一窗口开仓,盈亏高度相关,有效样本按独立窗口数看。
       </p>
