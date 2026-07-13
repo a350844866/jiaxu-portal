@@ -39,6 +39,9 @@ services:
       - N8N_API_URL=${N8N_API_URL}
       - N8N_API_KEY=${N8N_API_KEY}
       - N8N_PUBLIC_URL=${N8N_PUBLIC_URL}
+      # state-hub 个人状态卡(collector host 网络 :3128,只读 token)
+      - STATE_HUB_URL=${STATE_HUB_URL:-http://host.docker.internal:3128}
+      - STATE_HUB_READ_TOKEN=${STATE_HUB_READ_TOKEN}
       # mac-mini-collector (PORTAL_ 前缀避免被 /etc/environment 全局 TELEGRAM_BOT_TOKEN 静默覆盖)
       - PORTAL_TG_BOT_TOKEN=${PORTAL_TG_BOT_TOKEN}
       - PORTAL_TG_CHAT_ID=${PORTAL_TG_CHAT_ID}

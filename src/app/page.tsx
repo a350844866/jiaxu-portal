@@ -6,12 +6,14 @@ import { TokenCard } from "@/components/dashboard/token-card"
 import { RateLimitCard } from "@/components/dashboard/rate-limit-card"
 import { ResourceRail } from "@/components/dashboard/resource-rail"
 import { MacMiniRail } from "@/components/dashboard/mac-mini-rail"
+import { StateHubCard } from "@/components/dashboard/state-hub-card"
 import { TodoCard } from "@/components/dashboard/todo-card"
 import { PmPaperCard } from "@/components/dashboard/pm-paper-card"
 import { PmScalpCard } from "@/components/dashboard/pm-scalp-card"
 import { AINewsCard } from "@/components/dashboard/ai-news-card"
 import { N8nCard } from "@/components/dashboard/n8n-card"
 import { ZhihuHotCard } from "@/components/dashboard/zhihu-hot-card"
+import { ClaudeSessionCard } from "@/components/dashboard/claude-session-card"
 
 export const revalidate = 30
 
@@ -25,6 +27,8 @@ export default async function Home() {
         <ResourceRail />
       </div>
       <MacMiniRail />
+      <ClaudeSessionCard />
+      <StateHubCard />
       <TokenCard />
       <RateLimitCard />
       <AINewsCard />
