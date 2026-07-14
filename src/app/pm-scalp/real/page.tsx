@@ -6,6 +6,8 @@ import {
 } from "@/lib/pm-scalp-real-reader"
 import { PmScalpTabs } from "../tabs"
 import { cn } from "@/lib/utils"
+import { readPmScalpReplay } from "@/lib/pm-scalp-replay-reader"
+import { TradeReplayGrid } from "./replay"
 
 export const dynamic = "force-dynamic"
 
@@ -155,6 +157,7 @@ function EquityCurve({ snap }: { snap: PmScalpRealSnapshot }) {
 
 export default async function PmScalpRealPage() {
   const snap = await readPmScalpRealSnapshot()
+  const replay = await readPmScalpReplay()
   const settled = snap.wins + snap.losses
   const winrate = settled > 0 ? `${((snap.wins / settled) * 100).toFixed(0)}%` : "—"
   const liveFresh = snap.running && snap.lastEventAgeSeconds != null && snap.lastEventAgeSeconds < 3600
@@ -246,6 +249,18 @@ export default async function PmScalpRealPage() {
           </span>
         </h2>
         <EquityCurve snap={snap} />
+      </section>
+
+      {/* 交易回放小倍数图 */}
+      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
+        <h2 className="text-sm font-medium text-zinc-200">
+          交易回放
+          <span className="ml-2 text-xs font-normal text-zinc-500">
+            每笔已结算真金单的窗口内 BTC 位移轨迹与买入点 · 批次结束后离线生成
+            {replay.generated && ` · 生成于 ${replay.generated}`}
+          </span>
+        </h2>
+        <TradeReplayGrid trades={replay.trades} fileMissing={replay.fileMissing} />
       </section>
 
       {/* 逐单表 */}
