@@ -118,9 +118,14 @@ function MiniChart({ t, zoom }: { t: ReplayTrade; zoom: Zoom }) {
             </text>
           </>
         )}
-        {/* 终点 */}
+        {/* 终点 + 收窗差值标注(照片终点在 ±$轴上肉眼不可辨,数值兜底) */}
         <circle cx={x(last.s)} cy={y(last.disp)} r="3.5"
           fill={t.won ? "#34d399" : "#fb7185"} stroke="#18181b" strokeWidth="1.5" />
+        <text x={x(last.s) - 6} y={y(last.disp) + (last.disp >= 0 ? 14 : -8)}
+          textAnchor="end" fontSize="8"
+          className={t.won ? "fill-emerald-400" : "fill-rose-400"}>
+          收窗{last.disp >= 0 ? "+" : "−"}${Math.abs(usd(last.disp)).toFixed(2)}
+        </text>
         {/* 悬停十字线 */}
         {hover && (
           <line x1={x(hover.s)} x2={x(hover.s)} y1={PAD.t} y2={H - PAD.b}
