@@ -2,7 +2,8 @@
 
 /**
  * 真金交易回放：每笔已结算单一张小倍数折线图。
- * 线 = Chainlink 相对开窗 strike 的位移(bps)；虚线 0 = 开窗价；
+ * 线 = Chainlink 相对开窗 strike 的位移(美元)；虚线 0 = 开窗价；
+ * 数据文件存 bps,前端按各窗 strike 换算 usd = bps × strike / 1e4。
  * 淡色半区 = 买入侧的"胜区"（收窗时位移落在该半区即赢）；
  * ▼ + 圆点 = 买入时刻。悬停出十字线 + 数值。
  * y 轴各图独立（位移量级差异大，统一轴会压平小位移窗）。
@@ -24,6 +25,8 @@ function fmtUsd(n: number): string {
 
 function MiniChart({ t, zoom }: { t: ReplayTrade; zoom: Zoom }) {
   const [hover, setHover] = useState<ReplayPoint | null>(null)
+
+  const usd = (bps: number) => (bps * t.strike) / 1e4
 
   const { pts, x, y, yMax, x0, x1 } = useMemo(() => {
     const x0 = zoom === "tail" ? 240 : 0
@@ -88,11 +91,11 @@ function MiniChart({ t, zoom }: { t: ReplayTrade; zoom: Zoom }) {
           stroke="#52525b" strokeWidth="1" strokeDasharray="3 3" />
         {/* y 轴刻度 */}
         <text x={PAD.l - 4} y={PAD.t + 8} textAnchor="end" className="fill-zinc-500" fontSize="8">
-          +{yMax.toFixed(1)}
+          +${(yMax * t.strike / 1e4).toFixed(0)}
         </text>
         <text x={PAD.l - 4} y={zeroY + 3} textAnchor="end" className="fill-zinc-500" fontSize="8">0</text>
         <text x={PAD.l - 4} y={H - PAD.b} textAnchor="end" className="fill-zinc-500" fontSize="8">
-          −{yMax.toFixed(1)}
+          −${(yMax * t.strike / 1e4).toFixed(0)}
         </text>
         {/* x 轴刻度 */}
         {(zoom === "tail" ? [240, 270, 300] : [0, 100, 200, 300]).map((s) => (
@@ -126,7 +129,8 @@ function MiniChart({ t, zoom }: { t: ReplayTrade; zoom: Zoom }) {
       </svg>
       {hover && (
         <div className="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 rounded border border-zinc-700 bg-zinc-900/95 px-2 py-1 text-[10px] tabular-nums text-zinc-200 shadow-lg">
-          s{hover.s} · 位移 {hover.disp > 0 ? "+" : ""}{hover.disp.toFixed(2)}bps
+          s{hover.s} · 位移 {hover.disp > 0 ? "+" : "−"}${Math.abs(usd(hover.disp)).toFixed(1)}
+          <span className="text-zinc-500">({hover.disp > 0 ? "+" : ""}{hover.disp.toFixed(2)}bps)</span>
           {hover.bid != null && hover.ask != null && (
             <span className="text-zinc-400"> · {t.side}盘口 {hover.bid.toFixed(2)}/{hover.ask.toFixed(2)}</span>
           )}
@@ -165,7 +169,7 @@ export function TradeReplayGrid({ trades, fileMissing }: { trades: ReplayTrade[]
           </button>
         ))}
         <span className="text-[11px] text-zinc-500">
-          线=Chainlink 相对开窗价位移(bps) · 淡绿=买入侧胜区 · 各图 y 轴独立 · 悬停看逐秒数值
+          线=BTC 相对开窗价的位移(美元) · 淡绿=买入侧胜区 · 各图 y 轴独立 · 悬停看逐秒数值
         </span>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -177,7 +181,9 @@ export function TradeReplayGrid({ trades, fileMissing }: { trades: ReplayTrade[]
                 <span className={cn("ml-2", t.side === "Up" ? "text-emerald-300/90" : "text-rose-300/90")}>
                   {t.side}@{t.px.toFixed(2)}
                 </span>
-                <span className="ml-2 text-zinc-500">disp{t.dispEntry.toFixed(2)}bps</span>
+                <span className="ml-2 text-zinc-500">
+                  领先${Math.abs((t.dispEntry * t.strike) / 1e4).toFixed(1)}
+                </span>
                 {t.matched < 5 && <span className="ml-1 text-zinc-500">({t.matched}股)</span>}
               </span>
               <span className={cn("font-semibold tabular-nums", t.won ? "text-emerald-400" : "text-rose-400")}>
