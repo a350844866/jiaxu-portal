@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { readPmScalpSnapshot, type PmScalpTradeRow, type PmScalpVariantStat } from "@/lib/pm-scalp-reader"
+import { readHonestScorecard, type HonestVariant } from "@/lib/pm-scalp-honest-reader"
 import { PmScalpTabs } from "./tabs"
 import { cn } from "@/lib/utils"
 
@@ -52,7 +53,9 @@ function VariantTable({ variants }: { variants: PmScalpVariantStat[] }) {
       <h2 className="text-sm font-medium text-zinc-200">
         变体战绩
         <span className="ml-2 rounded bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300">v5 tick 纪元</span>
-        <span className="ml-2 text-xs font-normal text-zinc-500">每笔 5 股(对齐真金执行器)· 1500ms 延迟悲观口径 · 变体间独立核算</span>
+        <span className="ml-2 text-xs font-normal text-zinc-500">
+          每笔 5 股 · 1500ms 悲观 · <span className="text-amber-300/80">仅平静窗口径(互证拒用窗未计)</span> · 诚实全窗见下表
+        </span>
       </h2>
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[560px] text-xs">
@@ -95,6 +98,105 @@ function VariantTable({ variants }: { variants: PmScalpVariantStat[] }) {
           </tbody>
         </table>
       </div>
+    </section>
+  )
+}
+
+function HonestScorecard({
+  variants,
+  generated,
+  fileMissing,
+}: {
+  variants: HonestVariant[]
+  generated: string
+  fileMissing: boolean
+}) {
+  return (
+    <section className="rounded-2xl border border-amber-900/40 bg-amber-950/[0.08] p-4">
+      <h2 className="text-sm font-medium text-zinc-200">
+        诚实全窗口口径
+        <span className="ml-2 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-300">
+          去水分
+        </span>
+        <span className="ml-2 text-xs font-normal text-zinc-500">
+          模拟盘互证拒用了约半数窗口(快市/震荡)→ 平静窗成绩是海市蜃楼。
+          此处把拒用/未成窗按<span className="text-zinc-300">真实收盘结果</span>补回,
+          即真金无法跳窗时的实况
+          {generated && ` · 更新于 ${generated}`}
+        </span>
+      </h2>
+      {variants.length === 0 ? (
+        <p className="mt-3 text-xs text-zinc-500">
+          {fileMissing
+            ? "记分板文件缺失(analysis/honest-scorecard.json,gen_honest_scorecard.py 每 10min 再生)"
+            : "记分板暂无可展示变体"}
+        </p>
+      ) : (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[640px] text-xs">
+            <thead>
+              <tr className="border-b border-zinc-800 text-left text-zinc-500">
+                <th className="py-1.5 pr-3 font-normal">变体</th>
+                <th className="py-1.5 pr-3 text-right font-normal">平静窗(海市蜃楼)</th>
+                <th className="py-1.5 pr-3 text-right font-normal">全窗口 胜率</th>
+                <th className="py-1.5 pr-3 text-right font-normal">全窗 P&L(fr=1 / 成交率)</th>
+                <th className="py-1.5 font-normal">分日(regime)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {variants.map((v) => {
+                const flip =
+                  v.calm.pnl > 0 && v.allWindow.pnlOpt <= 0 // 平静赚→全窗亏 = 铁证海市蜃楼
+                return (
+                  <tr key={v.v} className="border-b border-zinc-800/50 last:border-0 align-top">
+                    <td className="py-2 pr-3 font-mono text-zinc-200">
+                      {v.v}
+                      {flip && (
+                        <span className="ml-1.5 rounded bg-rose-500/15 px-1 py-px text-[9px] text-rose-300">
+                          海市蜃楼
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-right tabular-nums">
+                      <span className={pnlClass(v.calm.pnl)}>{fmtUsd(v.calm.pnl)}</span>
+                      <span className="ml-1 text-zinc-600">
+                        {v.calm.n}单 {v.calm.winrate == null ? "—" : `${(v.calm.winrate * 100).toFixed(0)}%`}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3 text-right tabular-nums text-zinc-300">
+                      {v.allWindow.winrate == null ? "—" : `${(v.allWindow.winrate * 100).toFixed(0)}%`}
+                      <span className="ml-1 text-zinc-600">{v.allWindow.n}单</span>
+                    </td>
+                    <td className="py-2 pr-3 text-right tabular-nums">
+                      <span className={cn("font-semibold", pnlClass(v.allWindow.pnlOpt))}>
+                        {fmtUsd(v.allWindow.pnlOpt)}
+                      </span>
+                      <span className="text-zinc-600"> / </span>
+                      <span className={pnlClass(v.allWindow.pnlFill)}>{fmtUsd(v.allWindow.pnlFill)}</span>
+                    </td>
+                    <td className="py-2">
+                      <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+                        {v.byDay.map((d) => (
+                          <span key={d.day} className="tabular-nums text-[11px] text-zinc-500">
+                            {d.day.slice(3)}
+                            <span className={cn("ml-0.5", pnlClass(d.pnl))}>{fmtUsd(d.pnl)}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <p className="mt-2 text-[11px] leading-5 text-zinc-500">
+            fr=1=假设每个信号都按限价成交(上界)；成交率=按 C1 真金分侧分价位成交率折算(下界,但仍未计
+            <span className="text-zinc-400">成交毒性</span>——亏单比赢单更容易成交,故真实更差)。
+            <span className="text-amber-300/80">注意分日:C1 系全窗账面即便为正,利润也几乎全压在单一趋势日,混合/震荡日≈零或负</span>——
+            与真金 VN1 净亏同构。真相以真金账本为准。
+          </p>
+        </div>
+      )}
     </section>
   )
 }
@@ -147,6 +249,7 @@ function TradesTable({ title, rows, empty }: { title: string; rows: PmScalpTrade
 
 export default async function PmScalpPage() {
   const snap = await readPmScalpSnapshot()
+  const honest = await readHonestScorecard()
   const v3Winrate = snap.totalsV3.settled > 0 ? snap.totalsV3.wins / snap.totalsV3.settled : null
   // 全时代累计(含已废弃执行模型) — 仅页尾灰字追溯,不作决策口径
   const legacyPnl = snap.totals.pnl - snap.totalsV3.pnl
@@ -229,11 +332,17 @@ export default async function PmScalpPage() {
       <p className="rounded-xl border border-zinc-800/60 bg-zinc-900/30 px-3 py-2 text-[11px] leading-5 text-zinc-500">
         <span className="text-zinc-400">资金口径:</span>没有固定本金池——每笔独立投入 5 股(约 $2.5-5,对齐真金执行器规格),含买入成本与 taker 手续费(maker 部分零费),持有到窗口结算,不复利。
         「累计投入」是<span className="text-zinc-400">流水</span>而非占用资金。
-        <span className="text-zinc-400">盈利率 = 累计盈亏 ÷ 累计投入</span>,即按投入加权的单笔平均收益率(每投入 $1 平均赚回多少),不是"账户本金涨幅"。
+        <span className="text-zinc-400">盈利率 = 累计盈亏 ÷ 累计投入</span>,即按投入加权的单笔平均收益率(每投入 $1 平均赚回多少),不是「账户本金涨幅」。
         样本注意:多个变体常在同一窗口开仓,盈亏高度相关,有效样本按独立窗口数看。
       </p>
 
       <VariantTable variants={snap.variants} />
+
+      <HonestScorecard
+        variants={honest.variants}
+        generated={honest.generated}
+        fileMissing={honest.fileMissing}
+      />
 
       <TradesTable
         title="持仓中(等待窗口结算)"
