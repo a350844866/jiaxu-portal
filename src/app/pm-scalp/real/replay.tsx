@@ -1,20 +1,19 @@
 "use client"
 
 /**
- * 真金交易回放：每笔已结算单一张小倍数折线图。
- * 线 = Chainlink 相对开窗 strike 的位移(美元)；虚线 0 = 开窗价；
- * 数据文件存 bps,前端按各窗 strike 换算 usd = bps × strike / 1e4。
- * 淡色半区 = 买入侧的"胜区"（收窗时位移落在该半区即赢）；
- * ▼ + 圆点 = 买入时刻。悬停出十字线 + 数值。
- * y 轴各图独立（位移量级差异大，统一轴会压平小位移窗）。
+ * 真金交易回放（tick-v1）：每笔单一张小倍数图，画**买入侧份额价格**在窗口内的
+ * tick 级路径（0..1）。线=买入 token 中价，淡带=买一/卖一价差；赢单收敛到 ~1、
+ * 亏单崩向 ~0。▼=买入(限价+成交秒)；小点=该 token 的真实成交打印(last_trade_price)；
+ * 右端收敛到 1(绿)/0(红)=结算。悬停出十字线+数值。
+ * 数据每 5 分钟自增再生(gen_trades_viz.py)，滚动最近 20 笔。
  */
 import { useMemo, useState } from "react"
 import type { ReplayTrade, ReplayPoint } from "@/lib/pm-scalp-replay-reader"
 import { cn } from "@/lib/utils"
 
 const W = 320
-const H = 132
-const PAD = { l: 30, r: 8, t: 8, b: 16 }
+const H = 138
+const PAD = { l: 26, r: 8, t: 8, b: 16 }
 
 type Zoom = "full" | "tail"
 
@@ -26,36 +25,43 @@ function fmtUsd(n: number): string {
 function MiniChart({ t, zoom }: { t: ReplayTrade; zoom: Zoom }) {
   const [hover, setHover] = useState<ReplayPoint | null>(null)
 
-  const usd = (bps: number) => (bps * t.strike) / 1e4
-
-  const { pts, x, y, yMax, x0, x1 } = useMemo(() => {
+  const { pts, prints, x, y, x0, x1 } = useMemo(() => {
     const x0 = zoom === "tail" ? 240 : 0
     const x1 = 300
     const pts = t.series.filter((p) => p.s >= x0 && p.s <= x1)
-    let ext = 0.5
-    for (const p of pts) ext = Math.max(ext, Math.abs(p.disp))
-    ext = Math.max(ext, Math.abs(t.dispEntry)) * 1.15
+    const prints = t.prints.filter((p) => p.s >= x0 && p.s <= x1)
+    // y 轴固定 0..1（份额价格空间；跨图可比,不像位移那样需各自缩放）
     const x = (s: number) => PAD.l + ((s - x0) / (x1 - x0)) * (W - PAD.l - PAD.r)
-    const y = (d: number) => PAD.t + ((ext - d) / (2 * ext)) * (H - PAD.t - PAD.b)
-    return { pts, x, y, yMax: ext, x0, x1 }
+    const y = (v: number) => PAD.t + (1 - v) * (H - PAD.t - PAD.b)
+    return { pts, prints, x, y, x0, x1 }
   }, [t, zoom])
 
-  if (pts.length < 5) {
-    return <p className="text-xs text-zinc-500">该窗口 1Hz 轨迹缺失</p>
+  if (pts.length < 4) {
+    return <p className="text-xs text-zinc-500">该窗口 tick 轨迹缺失</p>
   }
 
-  const line = pts.map((p) => `${x(p.s).toFixed(1)},${y(p.disp).toFixed(1)}`).join(" ")
-  const zeroY = y(0)
-  const winTop = t.side === "Up" // Up 买家胜区在 0 线上方
-  // 买入点在缩放窗之外时不画标记(review LOW-5),避免钉在左缘误导
-  const entryVisible = t.sEntry >= x0 && t.sEntry <= x1
-  const entryPt = entryVisible
-    ? pts.reduce((a, b) => (Math.abs(b.s - t.sEntry) < Math.abs(a.s - t.sEntry) ? b : a))
-    : null
+  const midLine = pts
+    .map((p) => `${x(p.s).toFixed(1)},${y((p.bid + p.ask) / 2).toFixed(1)}`)
+    .join(" ")
+  // 买一/卖一价差带（上沿=ask 正序，下沿=bid 逆序折返）
+  const bandTop = pts.map((p) => `${x(p.s).toFixed(1)},${y(p.ask).toFixed(1)}`)
+  const bandBot = pts
+    .slice()
+    .reverse()
+    .map((p) => `${x(p.s).toFixed(1)},${y(p.bid).toFixed(1)}`)
+  const band = `${bandTop.join(" ")} ${bandBot.join(" ")}`
+
+  const entryVisible = t.sEntry != null && t.sEntry >= x0 && t.sEntry <= x1
+  const entryPt =
+    entryVisible && t.sEntry != null
+      ? pts.reduce((a, b) =>
+          Math.abs(b.s - t.sEntry!) < Math.abs(a.s - t.sEntry!) ? b : a,
+        )
+      : null
   const last = pts[pts.length - 1]
+  const lastMid = (last.bid + last.ask) / 2
 
   function onMove(e: React.PointerEvent<SVGSVGElement>) {
-    // 反演比例尺要扣绘图区 padding(review MED-2),否则左缘偏移 ~PAD.l/W·span
     const rect = e.currentTarget.getBoundingClientRect()
     const vx = ((e.clientX - rect.left) / rect.width) * W
     const frac = (vx - PAD.l) / (W - PAD.l - PAD.r)
@@ -65,67 +71,65 @@ function MiniChart({ t, zoom }: { t: ReplayTrade; zoom: Zoom }) {
     setHover(best)
   }
 
+  const lineColor = t.filled ? "#22d3ee" : "#71717a" // 未成交灰线
+
   return (
     <div className="relative">
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="w-full touch-none"
         role="img"
-        aria-label={`${t.windowLabel} ${t.side}@${t.px} ${t.won ? "胜" : "负"} ${fmtUsd(t.pnl)}`}
+        aria-label={`${t.windowLabel} ${t.side}@${t.limit} ${
+          t.won == null ? "未成交" : t.won ? "胜" : "负"
+        } ${fmtUsd(t.pnl)}`}
         onPointerMove={onMove}
         onPointerLeave={() => setHover(null)}
       >
-        {/* 买入侧胜区淡色 */}
-        <rect
-          x={PAD.l} width={W - PAD.l - PAD.r}
-          y={winTop ? PAD.t : zeroY}
-          height={winTop ? zeroY - PAD.t : H - PAD.b - zeroY}
-          fill="#10b981" opacity={0.06}
-        />
-        <text x={W - PAD.r - 2} y={winTop ? PAD.t + 9 : H - PAD.b - 3}
-          textAnchor="end" className="fill-zinc-600" fontSize="8">
-          {t.side} 胜区
-        </text>
-        {/* 0 线 = 开窗价 */}
-        <line x1={PAD.l} x2={W - PAD.r} y1={zeroY} y2={zeroY}
-          stroke="#52525b" strokeWidth="1" strokeDasharray="3 3" />
-        {/* y 轴刻度 */}
-        <text x={PAD.l - 4} y={PAD.t + 8} textAnchor="end" className="fill-zinc-500" fontSize="8">
-          +${(yMax * t.strike / 1e4).toFixed(0)}
-        </text>
-        <text x={PAD.l - 4} y={zeroY + 3} textAnchor="end" className="fill-zinc-500" fontSize="8">0</text>
-        <text x={PAD.l - 4} y={H - PAD.b} textAnchor="end" className="fill-zinc-500" fontSize="8">
-          −${(yMax * t.strike / 1e4).toFixed(0)}
-        </text>
+        {/* 0.5 参考线 = 公允 */}
+        <line x1={PAD.l} x2={W - PAD.r} y1={y(0.5)} y2={y(0.5)}
+          stroke="#3f3f46" strokeWidth="1" strokeDasharray="2 3" />
+        {/* y 轴刻度 0 / .5 / 1（份额价） */}
+        {[0, 0.5, 1].map((v) => (
+          <text key={v} x={PAD.l - 4} y={y(v) + 3} textAnchor="end"
+            className="fill-zinc-500" fontSize="8">
+            {v === 0.5 ? ".5" : v}
+          </text>
+        ))}
         {/* x 轴刻度 */}
         {(zoom === "tail" ? [240, 270, 300] : [0, 100, 200, 300]).map((s) => (
-          <text key={s} x={x(s)} y={H - 4} textAnchor="middle" className="fill-zinc-600" fontSize="8">
+          <text key={s} x={x(s)} y={H - 4} textAnchor="middle"
+            className="fill-zinc-600" fontSize="8">
             {s}s
           </text>
         ))}
-        {/* 位移轨迹 */}
-        <polyline points={line} fill="none" stroke="#22d3ee" strokeWidth="1.6"
-          strokeLinejoin="round" strokeLinecap="round" />
-        {/* 买入点(仅当在缩放窗内) */}
+        {/* 买一/卖一价差带 */}
+        <polygon points={band} fill={lineColor} opacity={0.12} />
+        {/* 真实成交打印 */}
+        {prints.map((p, i) => (
+          <circle key={i} cx={x(p.s)} cy={y(p.price)} r="1.1"
+            fill="#fbbf24" opacity={0.6} />
+        ))}
+        {/* 中价路径 */}
+        <polyline points={midLine} fill="none" stroke={lineColor}
+          strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" />
+        {/* 买入点 */}
         {entryPt && (
           <>
             <line x1={x(entryPt.s)} x2={x(entryPt.s)} y1={PAD.t} y2={H - PAD.b}
               stroke="#a1a1aa" strokeWidth="1" strokeDasharray="2 3" />
-            <circle cx={x(entryPt.s)} cy={y(entryPt.disp)} r="4"
-              fill="#22d3ee" stroke="#18181b" strokeWidth="1.5" />
-            <text x={x(entryPt.s)} y={PAD.t + 8} textAnchor="middle" className="fill-zinc-400" fontSize="8">
-              ▼买入 s{t.sEntry}
+            <circle cx={x(entryPt.s)} cy={y(t.limit)} r="4"
+              fill={t.filled ? "#22d3ee" : "#71717a"} stroke="#18181b"
+              strokeWidth="1.5" />
+            <text x={x(entryPt.s)} y={PAD.t + 8} textAnchor="middle"
+              className="fill-zinc-400" fontSize="8">
+              ▼{t.filled ? "买" : "挂"}@{t.limit.toFixed(2)}
             </text>
           </>
         )}
-        {/* 终点 + 收窗差值标注(照片终点在 ±$轴上肉眼不可辨,数值兜底) */}
-        <circle cx={x(last.s)} cy={y(last.disp)} r="3.5"
-          fill={t.won ? "#34d399" : "#fb7185"} stroke="#18181b" strokeWidth="1.5" />
-        <text x={x(last.s) - 6} y={y(last.disp) + (last.disp >= 0 ? 14 : -8)}
-          textAnchor="end" fontSize="8"
-          className={t.won ? "fill-emerald-400" : "fill-rose-400"}>
-          收窗{last.disp >= 0 ? "+" : "−"}${Math.abs(usd(last.disp)).toFixed(2)}
-        </text>
+        {/* 终点 = 结算收敛 */}
+        <circle cx={x(last.s)} cy={y(lastMid)} r="3.5"
+          fill={t.won == null ? "#a1a1aa" : t.won ? "#34d399" : "#fb7185"}
+          stroke="#18181b" strokeWidth="1.5" />
         {/* 悬停十字线 */}
         {hover && (
           <line x1={x(hover.s)} x2={x(hover.s)} y1={PAD.t} y2={H - PAD.b}
@@ -134,24 +138,27 @@ function MiniChart({ t, zoom }: { t: ReplayTrade; zoom: Zoom }) {
       </svg>
       {hover && (
         <div className="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 rounded border border-zinc-700 bg-zinc-900/95 px-2 py-1 text-[10px] tabular-nums text-zinc-200 shadow-lg">
-          s{hover.s} · 位移 {hover.disp > 0 ? "+" : "−"}${Math.abs(usd(hover.disp)).toFixed(1)}
-          <span className="text-zinc-500">({hover.disp > 0 ? "+" : ""}{hover.disp.toFixed(2)}bps)</span>
-          {hover.bid != null && hover.ask != null && (
-            <span className="text-zinc-400"> · {t.side}盘口 {hover.bid.toFixed(2)}/{hover.ask.toFixed(2)}</span>
-          )}
+          s{hover.s.toFixed(1)} · {t.side}价 {((hover.bid + hover.ask) / 2).toFixed(2)}
+          <span className="text-zinc-500"> ({hover.bid.toFixed(2)}/{hover.ask.toFixed(2)})</span>
         </div>
       )}
     </div>
   )
 }
 
-export function TradeReplayGrid({ trades, fileMissing }: { trades: ReplayTrade[]; fileMissing: boolean }) {
+export function TradeReplayGrid({
+  trades,
+  fileMissing,
+}: {
+  trades: ReplayTrade[]
+  fileMissing: boolean
+}) {
   const [zoom, setZoom] = useState<Zoom>("tail")
   if (trades.length === 0) {
     return (
       <p className="mt-3 text-xs text-zinc-500">
         {fileMissing
-          ? "回放数据文件缺失（analysis/trades-viz.json,批次结束后由分析脚本生成）"
+          ? "回放数据文件缺失（analysis/trades-viz.json,由 gen_trades_viz.py 每 5min 自增再生）"
           : "回放数据文件存在但无可展示的成交(空或格式不符)"}
       </p>
     )
@@ -174,25 +181,50 @@ export function TradeReplayGrid({ trades, fileMissing }: { trades: ReplayTrade[]
           </button>
         ))}
         <span className="text-[11px] text-zinc-500">
-          线=BTC 相对开窗价的位移(美元) · 淡绿=买入侧胜区 · 各图 y 轴独立 · 悬停看逐秒数值
+          线=买入侧份额价(tick 级) · 淡带=买一/卖一 · 黄点=真实成交 · 赢→1 亏→0 · 各图 y 轴 0..1 同标
         </span>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {trades.map((t, i) => (
-          <div key={`${t.w}-${i}`} className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-2.5">
+        {trades.map((t) => (
+          <div
+            key={t.w}
+            className={cn(
+              "rounded-xl border bg-zinc-950/40 p-2.5",
+              t.won == null
+                ? "border-zinc-800"
+                : t.won
+                  ? "border-emerald-900/40"
+                  : "border-rose-900/40",
+            )}
+          >
             <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
               <span className="text-zinc-300 tabular-nums">
                 {t.windowLabel}
-                <span className={cn("ml-2", t.side === "Up" ? "text-emerald-300/90" : "text-rose-300/90")}>
-                  {t.side}@{t.px.toFixed(2)}
+                <span
+                  className={cn(
+                    "ml-2",
+                    t.side === "Up" ? "text-emerald-300/90" : "text-rose-300/90",
+                  )}
+                >
+                  {t.side}@{t.limit.toFixed(2)}
                 </span>
-                <span className="ml-2 text-zinc-500">
-                  领先${Math.abs((t.dispEntry * t.strike) / 1e4).toFixed(1)}
-                </span>
-                {t.matched < 5 && <span className="ml-1 text-zinc-500">({t.matched}股)</span>}
+                {t.q != null && (
+                  <span className="ml-2 text-zinc-500">q{t.q.toFixed(2)}</span>
+                )}
+                <span className="ml-1 text-zinc-600">{t.strategy}</span>
               </span>
-              <span className={cn("font-semibold tabular-nums", t.won ? "text-emerald-400" : "text-rose-400")}>
-                {t.won ? "胜" : "负"} {fmtUsd(t.pnl)}
+              <span
+                className={cn(
+                  "font-semibold tabular-nums",
+                  t.won == null
+                    ? "text-zinc-400"
+                    : t.won
+                      ? "text-emerald-400"
+                      : "text-rose-400",
+                )}
+              >
+                {t.won == null ? "未成交" : t.won ? "胜" : "负"}
+                {t.filled && ` ${fmtUsd(t.pnl)}`}
               </span>
             </div>
             <MiniChart t={t} zoom={zoom} />

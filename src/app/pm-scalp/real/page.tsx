@@ -256,8 +256,8 @@ export default async function PmScalpRealPage() {
         <h2 className="text-sm font-medium text-zinc-200">
           交易回放
           <span className="ml-2 text-xs font-normal text-zinc-500">
-            每笔已结算真金单的窗口内 BTC 位移轨迹与买入点 · 批次结束后离线生成
-            {replay.generated && ` · 生成于 ${replay.generated}`}
+            最近 20 笔真金单的买入侧份额价 tick 级路径 · 每 5min 自增
+            {replay.generated && ` · 更新于 ${replay.generated}`}
           </span>
         </h2>
         <TradeReplayGrid trades={replay.trades} fileMissing={replay.fileMissing} />
