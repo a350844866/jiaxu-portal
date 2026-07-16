@@ -256,7 +256,7 @@ export default async function PmScalpRealPage() {
         <h2 className="text-sm font-medium text-zinc-200">
           交易回放
           <span className="ml-2 text-xs font-normal text-zinc-500">
-            最近 20 笔真金单的买入侧份额价 tick 级路径 · 每 5min 自增
+            最近 20 笔真金单的 BTC 相对开盘价偏离$(Chainlink 1Hz,决定输赢的线) · 每 5min 自增
             {replay.generated && ` · 更新于 ${replay.generated}`}
           </span>
         </h2>
