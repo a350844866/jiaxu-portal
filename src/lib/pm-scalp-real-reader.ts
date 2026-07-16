@@ -408,6 +408,10 @@ export function buildRealSnapshot(
         bal = anchors[ai].col
         equity.push({ ts: anchors[ai].ts, balance: bal })
       }
+      // 锚点=该时刻 settle 落账后的链上快照(执行器先写 settle 再读链写 end,
+      // 常同秒)——ts≤当前锚的事件已含在锚里,再叠加=双计
+      // [2026-07-16 实证:末笔 settle 与 end 同秒,equity 被多扣 $2.80]
+      if (e.ts <= anchors[ai].ts) continue
       bal += e.delta
       equity.push({ ts: e.ts, balance: bal })
     }
