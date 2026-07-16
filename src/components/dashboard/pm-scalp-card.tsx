@@ -14,12 +14,6 @@ function fmtAge(sec: number | null | undefined): string {
   return `${Math.floor(sec / 86400)}d 前`
 }
 
-function fmtUsd(n: number | null | undefined): string {
-  if (n == null || Number.isNaN(n)) return "—"
-  const sign = n > 0 ? "+" : ""
-  return `${sign}$${n.toFixed(2)}`
-}
-
 function Stat({ n, label }: { n: number | string | null; label: string }) {
   return (
     <span className="flex items-baseline gap-1">
@@ -66,12 +60,15 @@ export function PmScalpCard() {
   }, [])
 
   useEffect(() => {
+    // 挂载即取数是本仓 dashboard 卡通用模式(存量惯用法);load 内的同步
+    // setLoading(true) 触发本规则,重构全部卡片不在本次范围
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load()
   }, [load])
 
-  const totals = data?.totals
-  const winrate =
-    totals && totals.settled > 0 ? `${((totals.wins / totals.settled) * 100).toFixed(0)}%` : "—"
+  // 模拟盘成绩数字(胜率/P&L/每$1投入)已于 2026-07-16 按单向保真原则从卡片删除:
+  // 那是平静窗自选口径(且含旧模型遗留)的海市蜃楼聚合,骗过一次真金决策。
+  // 卡片只留仪器状态;成绩看 /pm-scalp 页「诚实全窗口口径」与实盘 LIVE 行(地面真相)。
   // 与 /pm-scalp 页 FreshDot 同语义:绿 ≤1×阈值 / 黄 ≤4×阈值 / 红 更旧或缺失
   const dotClass = (sec: number | null | undefined, staleAfter: number) =>
     sec == null
@@ -119,18 +116,11 @@ export function PmScalpCard() {
           <>
             <div className="mt-3 flex flex-wrap items-baseline gap-x-5 gap-y-2">
               <Stat n={data.windowsRecorded} label="窗口覆盖" />
-              <Stat n={totals?.settled ?? null} label="已结算" />
-              <Stat n={winrate} label="胜率" />
-              <Stat n={totals?.open ?? null} label="持仓中" />
-              <span className="flex items-baseline gap-1">
-                <span className={cn("text-lg font-semibold tabular-nums", (totals?.pnl ?? 0) > 0 ? "text-emerald-400" : (totals?.pnl ?? 0) < 0 ? "text-rose-400" : "text-zinc-100")}>
-                  {fmtUsd(totals?.pnl)}
-                </span>
-                <span className="text-[11px] text-zinc-500">
-                  P&amp;L{totals?.roiOnCost != null && (
-                    <> · 每$1投入{totals.roiOnCost > 0 ? "+" : ""}{(totals.roiOnCost * 100).toFixed(1)}%</>
-                  )}
-                </span>
+              <Stat n={data.totals?.open ?? null} label="持仓中" />
+              <span className="flex items-baseline gap-1 text-[11px] text-zinc-500">
+                模拟成绩只看
+                <span className="text-amber-300/80">诚实全窗口口径</span>
+                (点卡进入)
               </span>
             </div>
 
@@ -190,7 +180,7 @@ export function PmScalpCard() {
             ) : null}
 
             <div className="mt-3 flex items-center justify-between text-[11px] text-zinc-600">
-              <span>固定虚拟注 $100/笔 · 无本金池 · cl-only 干净账本</span>
+              <span>每笔 5 股模拟(对齐真金规格) · 无本金池 · cl-only 干净账本</span>
               <span className="flex items-center gap-1 text-zinc-500 opacity-0 transition-opacity group-hover:opacity-100">
                 查看完整看板 <ArrowRight className="h-3 w-3" />
               </span>
