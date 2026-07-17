@@ -42,10 +42,39 @@ function FreshDot({ sec, staleAfter }: { sec: number | null; staleAfter: number 
   return <span className={cn("inline-block h-2 w-2 rounded-full", cls)} />
 }
 
-// 变体战绩表(平静窗自选口径)已于 2026-07-16 整体删除——那正是骗过真金决策的
-// 海市蜃楼口径(互证拒用近半窗只考简单题),按"单向保真"原则永久失去展示资格;
-// 平静窗数字仅在下方诚实表里作为反面对照列保留。
-function HonestScorecard({
+// 变体战绩表(平静窗自选)2026-07-16 删除(海市蜃楼口径);2026-07-17 判定后老变体归档,
+// 页面重构为单一「策略板」:只列在役策略,每个带大白话说明;已归档的收为一行灰字指向 vault 判定档案。
+// 全部诊断数据仍在 honest-scorecard.json 供审计,页面只做展示裁剪。
+
+const STRATEGY_DESC: Record<string, string> = {
+  "C1M": "C1 信号的挂单版——只为测「挂单到底轮不轮得到」(可达性观察),非收益候选",
+  "VN2": "VN1 的诚实重造:把握值改用 1497 个历史窗的实测频率查表,末段买大幅领先侧",
+  "XWJ-T10": "上一窗收得极端 → 下一窗顺势吃单(跨窗延续)",
+  "XWJ-M10": "同上信号的挂单版(零手续费、价更好,但要排队)",
+  "MC60-T80": "中窗持续确认 60 秒后买领先侧(模仿链上真赢家节奏)——预注册对照组,永不真金",
+  "MC60-M20": "同上信号的挂单版",
+  "EP1-T": "最后 18 秒买 0.95-0.99 的近必胜方(吃「结算保险费」)——吃单对照",
+  "EP1-M": "同上思路挂单收保险费(主假设;挖掘口袋的证伪实验)",
+}
+const ACTIVE_MAIN = new Set(["C1M", "VN2"]) // variants[] 里仍在役的
+const ARCHIVED_NOTE =
+  "已归档(2026-07-17 判定):VN1 · C1-T500 · C1-T1000 · B1S——战绩与死因入档 vault「7 天期中判定」节;scanner 已日落,数据停止累积"
+
+function goBadge(v: { goStatus: string | null }, tw?: TripwireEntry) {
+  if (tw && tw.status !== "ok" && tw.status !== "insufficient")
+    return { text: `冻结:${tw.status}`, cls: "bg-amber-500/15 text-amber-300" }
+  if (v.goStatus === "CONTROL_EXCLUDED")
+    return { text: "对照组", cls: "bg-zinc-700/40 text-zinc-400" }
+  if (v.goStatus === "NO_GO")
+    return { text: "已证伪", cls: "bg-rose-500/15 text-rose-300" }
+  if (v.goStatus === "ELIGIBLE_FOR_DISCUSSION")
+    return { text: "够格讨论", cls: "bg-emerald-500/15 text-emerald-300" }
+  if (v.goStatus === "INSUFFICIENT")
+    return { text: "攒样本中", cls: "bg-cyan-500/10 text-cyan-300" }
+  return { text: "观察中", cls: "bg-zinc-700/40 text-zinc-400" }
+}
+
+function StrategyBoard({
   snap,
 }: {
   snap: {
@@ -58,16 +87,22 @@ function HonestScorecard({
   }
 }) {
   const { variants, entryGated, tripwire, malformed, generated, fileMissing } = snap
+  // 统一行模型:在役 = variants 里的 C1M/VN2 + 全部 forward 变体
+  const rows: { v: string; execEV: HonestVariant["execEV"]; goStatus: string | null }[] = [
+    ...variants
+      .filter((x) => ACTIVE_MAIN.has(x.v))
+      .map((x) => ({ v: x.v, execEV: x.execEV, goStatus: null })),
+    ...entryGated,
+  ]
   return (
     <section className="rounded-2xl border border-amber-900/40 bg-amber-950/[0.08] p-4">
       <h2 className="text-sm font-medium text-zinc-200">
-        诚实口径
+        策略板
         <span className="ml-2 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-300">
-          实测执行为准 · 强灌列仅诊断
+          在役 {rows.length} · 成绩=实测执行(费后)
         </span>
         <span className="ml-2 text-xs font-normal text-zinc-500">
-          headline=真实成交模拟的执行盈亏(实测);「全窗诊断」把拒用/未成窗按限价强灌
-          +真实收盘补回——它防跳题作弊,但本身偏乐观,不作成绩
+          全部纯模拟 forward-only;判定门 fail-closed,样本不够永远「攒样本中」
           {generated && ` · 更新于 ${generated}`}
         </span>
       </h2>
@@ -76,7 +111,7 @@ function HonestScorecard({
           ⚠ {malformed} 个变体数据畸形被丢弃(坏数据不显示为 0)——检查生成器
         </p>
       )}
-      {variants.length === 0 ? (
+      {rows.length === 0 ? (
         <p className="mt-3 text-xs text-zinc-500">
           {fileMissing
             ? "记分板文件缺失(analysis/honest-scorecard.json,gen_honest_scorecard.py 每 10min 再生)"
@@ -87,124 +122,48 @@ function HonestScorecard({
           <table className="w-full min-w-[680px] text-xs">
             <thead>
               <tr className="border-b border-zinc-800 text-left text-zinc-500">
-                <th className="py-1.5 pr-3 font-normal">变体</th>
-                <th className="py-1.5 pr-3 text-right font-normal">实测执行(headline)</th>
-                <th className="py-1.5 pr-3 text-right font-normal">全窗诊断·乐观(成交率折算 / fr=1)</th>
-                <th className="py-1.5 pr-3 text-right font-normal">平静窗(海市蜃楼对照)</th>
-                <th className="py-1.5 font-normal">分日(regime,诊断口径)</th>
+                <th className="py-1.5 pr-3 font-normal">策略</th>
+                <th className="py-1.5 pr-3 font-normal">这是什么</th>
+                <th className="py-1.5 pr-3 font-normal">状态</th>
+                <th className="py-1.5 pr-3 text-right font-normal">实测执行</th>
+                <th className="py-1.5 text-right font-normal">样本</th>
               </tr>
             </thead>
             <tbody>
-              {variants.map((v) => {
-                const flip =
-                  v.calm.pnl > 0 && v.allWindow.pnlOpt <= 0 // 平静赚→全窗亏 = 铁证海市蜃楼
+              {rows.map((r) => {
+                const badge = goBadge(r, tripwire[r.v.split("-")[0]] ?? tripwire[r.v])
+                const e = r.execEV
                 return (
-                  <tr key={v.v} className="border-b border-zinc-800/50 last:border-0 align-top">
-                    <td className="py-2 pr-3 font-mono text-zinc-200">
-                      {v.v}
-                      {flip && (
-                        <span className="ml-1.5 rounded bg-rose-500/15 px-1 py-px text-[9px] text-rose-300">
-                          海市蜃楼
-                        </span>
-                      )}
+                  <tr key={r.v} className="border-b border-zinc-800/50 last:border-0 align-top">
+                    <td className="py-2 pr-3 font-mono text-zinc-200 whitespace-nowrap">{r.v}</td>
+                    <td className="py-2 pr-3 text-zinc-400 leading-5">{STRATEGY_DESC[r.v] ?? "—"}</td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      <span className={cn("rounded px-1.5 py-px text-[10px]", badge.cls)}>{badge.text}</span>
                     </td>
-                    <td className="py-2 pr-3 text-right tabular-nums">
-                      {v.execEV == null || v.execEV.filled === 0 ? (
-                        <span className="text-zinc-500">
-                          {v.execEV ? `0 笔实测(${v.execEV.n} intent)` : "—"}
-                        </span>
+                    <td className="py-2 pr-3 text-right tabular-nums whitespace-nowrap">
+                      {e == null || e.filled === 0 ? (
+                        <span className="text-zinc-500">{e ? "0 笔实测" : "—"}</span>
                       ) : (
                         <>
-                          <span className={cn("font-semibold", pnlClass(v.execEV.netSum))}>
-                            {fmtUsd(v.execEV.netSum)}
-                          </span>
+                          <span className={cn("font-semibold", pnlClass(e.netSum))}>{fmtUsd(e.netSum)}</span>
                           <span className="ml-1 text-zinc-600">
-                            {v.execEV.filled}成 {v.execEV.w}W{v.execEV.l}L
-                            {v.execEV.wilsonLB != null && ` LB${(v.execEV.wilsonLB * 100).toFixed(0)}%`}
+                            {e.w}W{e.l}L
                           </span>
                         </>
                       )}
                     </td>
-                    <td className="py-2 pr-3 text-right tabular-nums text-zinc-400">
-                      <span className={pnlClass(v.allWindow.pnlFill)}>{fmtUsd(v.allWindow.pnlFill)}</span>
-                      <span className="text-zinc-600"> / </span>
-                      <span className={pnlClass(v.allWindow.pnlOpt)}>{fmtUsd(v.allWindow.pnlOpt)}</span>
-                      <span className="ml-1 text-zinc-600">
-                        {v.allWindow.n}单
-                        {v.allWindow.noOutcome > 0 && (
-                          <span className="text-amber-400/80"> 缺{v.allWindow.noOutcome}</span>
-                        )}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-3 text-right tabular-nums">
-                      <span className={pnlClass(v.calm.pnl)}>{fmtUsd(v.calm.pnl)}</span>
-                      <span className="ml-1 text-zinc-600">
-                        {v.calm.n}单 {v.calm.winrate == null ? "—" : `${(v.calm.winrate * 100).toFixed(0)}%`}
-                      </span>
-                    </td>
-                    <td className="py-2">
-                      <div className="flex flex-wrap gap-x-2 gap-y-0.5">
-                        {v.byDay.map((d) => (
-                          <span key={d.day} className="tabular-nums text-[11px] text-zinc-500">
-                            {d.day.slice(3)}
-                            <span className={cn("ml-0.5", pnlClass(d.pnl))}>{fmtUsd(d.pnl)}</span>
-                          </span>
-                        ))}
-                      </div>
+                    <td className="py-2 text-right tabular-nums text-zinc-500 whitespace-nowrap">
+                      {e ? `${e.filled}成/${e.n}签` : "—"}
                     </td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
-          {entryGated.length > 0 && (
-            <div className="mt-3 border-t border-zinc-800/60 pt-2">
-              <div className="mb-1 text-[11px] text-zinc-400">
-                forward-only 新变体(2026-07-16 预注册,只计部署后窗口;成绩=实测执行)
-              </div>
-              <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] tabular-nums">
-                {entryGated.map((v) => (
-                  <span key={v.v} className="text-zinc-400">
-                    <span className="font-mono text-zinc-300">{v.v}</span>
-                    {v.execEV == null || v.execEV.filled === 0 ? (
-                      <span className="ml-1 text-zinc-500">
-                        {v.execEV ? `0 实测/${v.execEV.n} intent` : "—"}
-                      </span>
-                    ) : (
-                      <span className={cn("ml-1", pnlClass(v.execEV.netSum))}>
-                        {fmtUsd(v.execEV.netSum)}({v.execEV.filled}成)
-                      </span>
-                    )}
-                    {v.goStatus && (
-                      <span
-                        className={cn(
-                          "ml-1 rounded px-1 py-px text-[9px]",
-                          v.goStatus === "CONTROL_EXCLUDED"
-                            ? "bg-zinc-700/40 text-zinc-400"
-                            : "bg-cyan-500/10 text-cyan-300",
-                        )}
-                      >
-                        {v.goStatus}
-                      </span>
-                    )}
-                  </span>
-                ))}
-                {Object.entries(tripwire).map(([k, t]) =>
-                  t.status !== "ok" ? (
-                    <span key={k} className="rounded bg-amber-500/15 px-1.5 py-px text-[10px] text-amber-300">
-                      ⚠ {k} {t.status}({t.perDay ?? "?"}/天 vs 锚 {t.anchorPerDay ?? "?"})
-                    </span>
-                  ) : null,
-                )}
-              </div>
-            </div>
-          )}
-          <p className="mt-2 text-[11px] leading-5 text-zinc-500">
-            全窗诊断列:左=按真金成交率折算(仍未计
-            <span className="text-zinc-400">成交毒性</span>——亏单更易成交,真实更差),右=fr=1 全成上界;
-            两者都是「假定能按限价成交」的反事实,只用于抓平静窗自选作弊,不是可实现盈亏。
-            <span className="text-amber-300/80">分日提醒:C1 系诊断面即便为正,利润几乎全压单一趋势日</span>——
-            与真金同构。真相以真金账本为准。
+          <p className="mt-2 text-[11px] leading-5 text-zinc-600">{ARCHIVED_NOTE}</p>
+          <p className="mt-1 text-[11px] leading-5 text-zinc-500">
+            实测执行=真实成交模拟的费后盈亏(taker 计费/maker 悲观队列,拿不到 credit 不算成);
+            强灌/诊断口径只进审计 JSON 不上桌面。真相以真金账本为准——当前真金零敞口。
           </p>
         </div>
       )}
@@ -316,8 +275,8 @@ export default async function PmScalpPage() {
       <p className="rounded-xl border border-cyan-800/40 bg-cyan-950/20 px-3 py-2 text-[11px] leading-5 text-zinc-400">
         <span className="font-medium text-cyan-300">口径:v5 tick 纪元(exec=5,2026-07-13 起,tick 级关窗回放)。</span>
         成交判定 = 全量订单簿重建 + marketable-limit 生命周期(到达走簿→3s 静置悲观队列→撤单)+ 延迟竞速(headline 1500ms,300/800ms 敏感档另记);
-        tape×tick 双采集互证 fail-closed,不可信窗整窗拒记(新变体用 entry-gated 口径:只按进场前数据判定,进场后流坏按官方结果补账)。
-        变体池:v5 幸存者(C1 家族/VN1/B1S,SPEC-ticksim-v5 冻结)+ forward-only 扩充(VN2/XWJ/MC60,各自预注册 spec 冻结,只计部署后窗口)。
+        tape×tick 双采集互证 fail-closed,不可信窗整窗拒记(forward 变体用 entry-gated 口径:只按进场前数据判定,进场后流坏按官方结果补账)。
+        变体池:在役 8(C1M/VN2/XWJ 对/MC60 对/EP1 对,各自预注册 spec 冻结,只计围栏后窗口);VN1/C1 双胞胎/B1S 已按 7-17 判定归档日落。
         更早模型(exec≤4,papertrader 已退役)的账<span className="text-zinc-300">已整体归档出主账本</span>,对实盘判断无参考价值。判定日 {snap.judgmentDate} 主判 C1 真金,v5 前向为参考。
       </p>
 
@@ -326,7 +285,7 @@ export default async function PmScalpPage() {
         样本注意:多个变体常在同一窗口开仓,盈亏高度相关,有效样本按独立窗口数看。
       </p>
 
-      <HonestScorecard snap={honest} />
+      <StrategyBoard snap={honest} />
 
       <TradesTable
         title="持仓中(等待窗口结算)"
