@@ -95,4 +95,25 @@ describe("parseHonestScorecard", () => {
     expect(parseHonestScorecard('{"variants": [null]}').variants).toHaveLength(0)
     expect(parseHonestScorecard('{"variants": [{"calm":{}}]}').variants).toHaveLength(0) // 无 v
   })
+
+
+  it("ep1 区段(primary 形)归一并入 entryGated 展示", () => {
+    const s = parseHonestScorecard(JSON.stringify({
+      ...good,
+      ep1: {
+        variants: [{
+          v: "EP1-T",
+          primary: { nIntents: 10, creditedFills: 3, filledW: 2, filledL: 1, netSum: -4.2, evPerIntent: -0.42, winrateFilled: 0.667, wilsonLB: 0.21 },
+          goDecision: { status: "INSUFFICIENT" },
+        }],
+        tripwire: { "EP1-T": { status: "insufficient", perDay: 48, anchorPerDay: 118.3 } },
+      },
+    }))
+    expect(s.entryGated).toHaveLength(1)
+    expect(s.entryGated[0].v).toBe("EP1-T")
+    expect(s.entryGated[0].execEV?.n).toBe(10)
+    expect(s.entryGated[0].execEV?.filled).toBe(3)
+    expect(s.entryGated[0].goStatus).toBe("INSUFFICIENT")
+    expect(s.tripwire["EP1-T"].anchorPerDay).toBe(118.3)
+  })
 })

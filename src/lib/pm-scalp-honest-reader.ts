@@ -182,20 +182,32 @@ export function parseHonestScorecard(text: string): HonestScorecard {
     out.push({ v: o.v, calm, allWindow, execEV: parseExec(o.execEV), byDay })
   }
 
-  // entry-gated 新变体(可缺省:旧 JSON 无此段)
+  // entry-gated 新变体(可缺省:旧 JSON 无此段);ep1 区段(2026-07-17)同形并入展示
   const eg: EntryGatedVariant[] = []
   const tripwire: Record<string, TripwireEntry> = {}
-  const egRoot = root.entryGated
-  if (typeof egRoot === "object" && egRoot != null) {
-    if (Array.isArray(egRoot.variants)) {
-      for (const item of egRoot.variants as unknown[]) {
+  const collect = (root2: unknown) => {
+    if (typeof root2 !== "object" || root2 == null) return
+    const r0 = root2 as { variants?: unknown; tripwire?: unknown }
+    if (Array.isArray(r0.variants)) {
+      for (const item of r0.variants as unknown[]) {
         if (typeof item !== "object" || item == null) continue
         const o = item as Record<string, unknown>
         if (typeof o.v !== "string") continue
         const go = o.goDecision as Record<string, unknown> | undefined
+        // EP1 用 primary(nIntents/creditedFills),XWJ/MC60 用 execEV(n/filled)——归一成 execEV 形
+        let exec = parseExec(o.execEV)
+        if (exec == null && typeof o.primary === "object" && o.primary != null) {
+          const p = o.primary as Record<string, unknown>
+          exec = parseExec({
+            n: p.nIntents, filled: p.creditedFills,
+            w: p.filledW, l: p.filledL,
+            netSum: p.netSum, evPerIntent: num(p.evPerIntent) ?? 0,
+            winrateFilled: p.winrateFilled, wilsonLB: p.wilsonLB,
+          })
+        }
         eg.push({
           v: o.v,
-          execEV: parseExec(o.execEV),
+          execEV: exec,
           goStatus:
             go && typeof go === "object" && typeof go.status === "string"
               ? go.status
@@ -203,7 +215,7 @@ export function parseHonestScorecard(text: string): HonestScorecard {
         })
       }
     }
-    const tw = egRoot.tripwire
+    const tw = r0.tripwire
     if (typeof tw === "object" && tw != null) {
       for (const [k, v] of Object.entries(tw as Record<string, unknown>)) {
         if (typeof v !== "object" || v == null) continue
@@ -217,6 +229,8 @@ export function parseHonestScorecard(text: string): HonestScorecard {
       }
     }
   }
+  collect(root.entryGated)
+  collect((root as { ep1?: unknown }).ep1)
 
   const generated = isoFromTs(num(root.meta?.generated_ts))
   return { generated, variants: out, entryGated: eg, tripwire, malformed, fileMissing: false }
