@@ -228,7 +228,7 @@ export function TradeReplayGrid({
         ))}
         <span className="text-[11px] text-zinc-500">
           线=BTC(Chainlink)相对开盘价的偏离$ · 0线=开盘价 · 淡绿=买入侧胜区 ·
-          各图y轴独立 · 悬停看$与bps · 胜负以交易所结算为准(线为1Hz采样)
+          各图y轴独立 · 悬停看$与bps · 金额=费后(taker费上界) · 胜负以交易所结算为准(线为1Hz采样)
         </span>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

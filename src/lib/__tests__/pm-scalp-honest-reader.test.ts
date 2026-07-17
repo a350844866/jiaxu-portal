@@ -42,20 +42,49 @@ describe("parseHonestScorecard", () => {
     expect(s.variants[0].v).toBe("VN1")
   })
 
-  it("畸形数字降级为默认值不产生 NaN", () => {
+  it("必填数字畸形 → 整变体丢弃并计 malformed(坏数据不许变成权威的 0)", () => {
+    // 2026-07-17 全量 review B-8:损坏的负 PnL 若默默变成 $0 = 高估通道
     const s = parseHonestScorecard(JSON.stringify({
-      variants: [{
-        v: "Y",
-        calm: { n: "oops", w: 1, l: 0, winrate: null, pnl: 2 },
-        allWindow: { n: 3, w: 2, l: 1, winrate: 0.66, pnlOpt: "x", pnlFill: -1, noOutcome: 0 },
-        byDay: [{ day: "07-16", n: 3, pnl: "bad" }],
-      }],
+      variants: [
+        {
+          v: "Y",
+          calm: { n: "oops", w: 1, l: 0, winrate: null, pnl: 2 },
+          allWindow: { n: 3, w: 2, l: 1, winrate: 0.66, pnlOpt: "x", pnlFill: -1, noOutcome: 0 },
+        },
+        good.variants[1],
+      ],
     }))
     expect(s.variants).toHaveLength(1)
-    expect(s.variants[0].calm.n).toBe(0) // "oops" → 0
-    expect(s.variants[0].allWindow.pnlOpt).toBe(0) // "x" → 0
-    expect(s.variants[0].byDay[0].pnl).toBe(0) // "bad" → 0
-    expect(Number.isNaN(s.variants[0].allWindow.pnlOpt)).toBe(false)
+    expect(s.variants[0].v).toBe("VN1")
+    expect(s.malformed).toBe(1)
+  })
+
+  it("解析 execEV / entryGated / tripwire(缺省兼容旧 JSON)", () => {
+    const withNew = {
+      ...good,
+      variants: [{
+        ...good.variants[1],
+        execEV: { n: 93, filled: 58, w: 48, l: 10, netSum: 2.73, evPerIntent: 0.0294, winrateFilled: 0.8276, wilsonLB: 0.7109 },
+      }],
+      entryGated: {
+        variants: [
+          { v: "XWJ-T10", execEV: { n: 1, filled: 1, w: 0, l: 1, netSum: -4.06, evPerIntent: -4.06, winrateFilled: 0, wilsonLB: 0 }, goDecision: { status: "INSUFFICIENT" } },
+          { v: "MC60-T80", execEV: null, goDecision: { status: "CONTROL_EXCLUDED" } },
+        ],
+        tripwire: { MC60: { status: "FREEZE_SCORING", perDay: 3.6, anchorPerDay: 20.3 } },
+      },
+    }
+    const s = parseHonestScorecard(JSON.stringify(withNew))
+    expect(s.variants[0].execEV?.netSum).toBe(2.73)
+    expect(s.entryGated).toHaveLength(2)
+    expect(s.entryGated[0].goStatus).toBe("INSUFFICIENT")
+    expect(s.entryGated[1].execEV).toBeNull()
+    expect(s.tripwire.MC60.status).toBe("FREEZE_SCORING")
+    // 旧 JSON(无新段)兼容:
+    const old = parseHonestScorecard(JSON.stringify(good))
+    expect(old.entryGated).toHaveLength(0)
+    expect(old.variants[0].execEV).toBeNull()
+    expect(old.malformed).toBe(0)
   })
 
   it("非 JSON / 形状畸形绝不抛错", () => {

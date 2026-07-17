@@ -36,16 +36,46 @@ export interface HonestDay {
   pnl: number
 }
 
+/** 实测执行口径（headline,2026-07-17 全量 review A2:强灌反事实不再当成绩） */
+export interface HonestExec {
+  n: number
+  filled: number
+  w: number
+  l: number
+  netSum: number
+  evPerIntent: number
+  winrateFilled: number | null
+  wilsonLB: number | null
+}
+
 export interface HonestVariant {
   v: string
   calm: HonestCalm
   allWindow: HonestAllWindow
+  execEV: HonestExec | null
   byDay: HonestDay[]
+}
+
+/** entry-gated 新变体(XWJ/MC60)的最小展示面 */
+export interface EntryGatedVariant {
+  v: string
+  execEV: HonestExec | null
+  goStatus: string | null
+}
+
+export interface TripwireEntry {
+  status: string
+  perDay: number | null
+  anchorPerDay: number | null
 }
 
 export interface HonestScorecard {
   generated: string
   variants: HonestVariant[]
+  entryGated: EntryGatedVariant[]
+  tripwire: Record<string, TripwireEntry>
+  /** 严格校验丢弃的畸形变体数(>0 时页面显示警告,坏数据不许变成权威的 0) */
+  malformed: number
   fileMissing: boolean
 }
 
@@ -63,26 +93,40 @@ function isoFromTs(ts: number | null): string {
   return `${mm}-${dd} ${hh}:${mi}`
 }
 
-function parseCalm(o: Record<string, unknown>): HonestCalm {
+// 严格校验(2026-07-17 review B-8):必填数值缺失/畸形 → 返回 null 丢弃整个变体,
+// 绝不把坏数据默默变成权威的 0(负 PnL 损坏成 $0 = 高估通道)
+function parseCalm(o: Record<string, unknown>): HonestCalm | null {
+  const n = num(o.n), w = num(o.w), l = num(o.l), pnl = num(o.pnl)
+  if (n == null || w == null || l == null || pnl == null) return null
+  return { n, w, l, winrate: num(o.winrate), pnl }
+}
+
+function parseAll(o: Record<string, unknown>): HonestAllWindow | null {
+  const n = num(o.n), w = num(o.w), l = num(o.l)
+  const pnlOpt = num(o.pnlOpt), pnlFill = num(o.pnlFill)
+  if (n == null || w == null || l == null || pnlOpt == null || pnlFill == null)
+    return null
   return {
-    n: num(o.n) ?? 0,
-    w: num(o.w) ?? 0,
-    l: num(o.l) ?? 0,
-    winrate: num(o.winrate),
-    pnl: num(o.pnl) ?? 0,
+    n, w, l, winrate: num(o.winrate), pnlOpt, pnlFill,
+    noOutcome: num(o.noOutcome) ?? 0,
   }
 }
 
-function parseAll(o: Record<string, unknown>): HonestAllWindow {
+function parseExec(v: unknown): HonestExec | null {
+  if (typeof v !== "object" || v == null) return null
+  const o = v as Record<string, unknown>
+  const n = num(o.n), filled = num(o.filled), w = num(o.w), l = num(o.l)
+  const netSum = num(o.netSum), evPerIntent = num(o.evPerIntent)
+  if (n == null || filled == null || w == null || l == null ||
+      netSum == null || evPerIntent == null) return null
   return {
-    n: num(o.n) ?? 0,
-    w: num(o.w) ?? 0,
-    l: num(o.l) ?? 0,
-    winrate: num(o.winrate),
-    pnlOpt: num(o.pnlOpt) ?? 0,
-    pnlFill: num(o.pnlFill) ?? 0,
-    noOutcome: num(o.noOutcome) ?? 0,
+    n, filled, w, l, netSum, evPerIntent,
+    winrateFilled: num(o.winrateFilled), wilsonLB: num(o.wilsonLB),
   }
+}
+
+const EMPTY: Omit<HonestScorecard, "fileMissing"> = {
+  generated: "", variants: [], entryGated: [], tripwire: {}, malformed: 0,
 }
 
 export function parseHonestScorecard(text: string): HonestScorecard {
@@ -90,14 +134,19 @@ export function parseHonestScorecard(text: string): HonestScorecard {
   try {
     raw = JSON.parse(text)
   } catch {
-    return { generated: "", variants: [], fileMissing: false }
+    return { ...EMPTY, fileMissing: false }
   }
   if (typeof raw !== "object" || raw == null) {
-    return { generated: "", variants: [], fileMissing: false }
+    return { ...EMPTY, fileMissing: false }
   }
-  const root = raw as { meta?: { generated_ts?: unknown }; variants?: unknown }
+  const root = raw as {
+    meta?: { generated_ts?: unknown }
+    variants?: unknown
+    entryGated?: { variants?: unknown; tripwire?: unknown }
+  }
   const list = Array.isArray(root.variants) ? root.variants : []
   const out: HonestVariant[] = []
+  let malformed = 0
   for (const item of list) {
     if (typeof item !== "object" || item == null) continue
     const o = item as Record<string, unknown>
@@ -105,7 +154,16 @@ export function parseHonestScorecard(text: string): HonestScorecard {
     if (
       typeof o.calm !== "object" || o.calm == null ||
       typeof o.allWindow !== "object" || o.allWindow == null
-    ) continue
+    ) {
+      malformed++
+      continue
+    }
+    const calm = parseCalm(o.calm as Record<string, unknown>)
+    const allWindow = parseAll(o.allWindow as Record<string, unknown>)
+    if (calm == null || allWindow == null) {
+      malformed++ // 必填字段畸形:整变体丢弃并计数,不显示假 0
+      continue
+    }
     const byDay: HonestDay[] = []
     if (Array.isArray(o.byDay)) {
       for (const d of o.byDay as unknown[]) {
@@ -121,15 +179,47 @@ export function parseHonestScorecard(text: string): HonestScorecard {
         })
       }
     }
-    out.push({
-      v: o.v,
-      calm: parseCalm(o.calm as Record<string, unknown>),
-      allWindow: parseAll(o.allWindow as Record<string, unknown>),
-      byDay,
-    })
+    out.push({ v: o.v, calm, allWindow, execEV: parseExec(o.execEV), byDay })
   }
+
+  // entry-gated 新变体(可缺省:旧 JSON 无此段)
+  const eg: EntryGatedVariant[] = []
+  const tripwire: Record<string, TripwireEntry> = {}
+  const egRoot = root.entryGated
+  if (typeof egRoot === "object" && egRoot != null) {
+    if (Array.isArray(egRoot.variants)) {
+      for (const item of egRoot.variants as unknown[]) {
+        if (typeof item !== "object" || item == null) continue
+        const o = item as Record<string, unknown>
+        if (typeof o.v !== "string") continue
+        const go = o.goDecision as Record<string, unknown> | undefined
+        eg.push({
+          v: o.v,
+          execEV: parseExec(o.execEV),
+          goStatus:
+            go && typeof go === "object" && typeof go.status === "string"
+              ? go.status
+              : null,
+        })
+      }
+    }
+    const tw = egRoot.tripwire
+    if (typeof tw === "object" && tw != null) {
+      for (const [k, v] of Object.entries(tw as Record<string, unknown>)) {
+        if (typeof v !== "object" || v == null) continue
+        const r = v as Record<string, unknown>
+        if (typeof r.status !== "string") continue
+        tripwire[k] = {
+          status: r.status,
+          perDay: num(r.perDay),
+          anchorPerDay: num(r.anchorPerDay),
+        }
+      }
+    }
+  }
+
   const generated = isoFromTs(num(root.meta?.generated_ts))
-  return { generated, variants: out, fileMissing: false }
+  return { generated, variants: out, entryGated: eg, tripwire, malformed, fileMissing: false }
 }
 
 function baseDir(): string {
@@ -142,11 +232,11 @@ export async function readHonestScorecard(): Promise<HonestScorecard> {
   try {
     text = await fs.readFile(file, "utf8")
   } catch {
-    return { generated: "", variants: [], fileMissing: true }
+    return { generated: "", variants: [], entryGated: [], tripwire: {}, malformed: 0, fileMissing: true }
   }
   try {
     return parseHonestScorecard(text)
   } catch {
-    return { generated: "", variants: [], fileMissing: false }
+    return { generated: "", variants: [], entryGated: [], tripwire: {}, malformed: 0, fileMissing: false }
   }
 }
