@@ -53,8 +53,9 @@ const STRATEGY_DESC: Record<string, string> = {
   "MC60-M20": "同上信号的挂单版",
   "EP1-T": "最后 18 秒买 0.95-0.99 的近必胜方(吃「结算保险费」)——吃单对照",
   "EP1-M": "同上思路挂单收保险费(主假设;挖掘口袋的证伪实验)",
+  "MO5-T": "订单流因子验证:决策前 60 秒吃单流的 5 秒盈亏站队领先侧才买——07-18 挖掘唯一幸存因子的转正实验",
 }
-const ACTIVE_MAIN = new Set(["C1M", "VN2"]) // variants[] 里仍在役的
+const ACTIVE_MAIN = new Set(["C1M", "VN2", "MO5-T"]) // variants[] 里仍在役的
 const ARCHIVED_NOTE =
   "已归档:VN1 · C1-T500 · C1-T1000 · B1S(2026-07-17 判定,scanner 日落停累积)· XWJ 对(2026-07-20,goDecision NO_GO,CI 全负)——战绩与死因入档 vault「7 天期中判定」节"
 
@@ -89,7 +90,7 @@ function StrategyBoard({
   const rows: { v: string; execEV: HonestVariant["execEV"]; goStatus: string | null }[] = [
     ...variants
       .filter((x) => ACTIVE_MAIN.has(x.v))
-      .map((x) => ({ v: x.v, execEV: x.execEV, goStatus: null })),
+      .map((x) => ({ v: x.v, execEV: x.execEV, goStatus: x.goStatus })),
     ...entryGated,
   ]
   return (
@@ -274,7 +275,7 @@ export default async function PmScalpPage() {
         <span className="font-medium text-cyan-300">口径:v5 tick 纪元(exec=5,2026-07-13 起,tick 级关窗回放)。</span>
         成交判定 = 全量订单簿重建 + marketable-limit 生命周期(到达走簿→3s 静置悲观队列→撤单)+ 延迟竞速(headline 1500ms,300/800ms 敏感档另记);
         tape×tick 双采集互证 fail-closed,不可信窗整窗拒记(forward 变体用 entry-gated 口径:只按进场前数据判定,进场后流坏按官方结果补账)。
-        变体池:在役 6(C1M/VN2/MC60 对/EP1 对,各自预注册 spec 冻结,只计围栏后窗口);VN1/C1 双胞胎/B1S/XWJ 对 已归档日落(XWJ 2026-07-20 NO_GO)。
+        变体池:在役 7(C1M/VN2/MC60 对/EP1 对/MO5-T,各自预注册 spec 冻结,只计围栏后窗口);VN1/C1 双胞胎/B1S/XWJ 对 已归档日落(XWJ 2026-07-20 NO_GO)。
         更早模型(exec≤4,papertrader 已退役)的账<span className="text-zinc-300">已整体归档出主账本</span>,对实盘判断无参考价值。判定日 {snap.judgmentDate} 主判 C1 真金,v5 前向为参考。
       </p>
 

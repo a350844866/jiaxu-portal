@@ -54,6 +54,8 @@ export interface HonestVariant {
   allWindow: HonestAllWindow
   execEV: HonestExec | null
   byDay: HonestDay[]
+  /** 顶层 taker 变体的正式门状态(2026-07-20 goDecision 接入后才有;缺省 null) */
+  goStatus: string | null
 }
 
 /** entry-gated 新变体(XWJ/MC60)的最小展示面 */
@@ -179,7 +181,13 @@ export function parseHonestScorecard(text: string): HonestScorecard {
         })
       }
     }
-    out.push({ v: o.v, calm, allWindow, execEV: parseExec(o.execEV), byDay })
+    const go = o.goDecision as Record<string, unknown> | null | undefined
+    const goStatus =
+      go != null && typeof go === "object" && typeof go.status === "string"
+        ? go.status
+        : null
+    out.push({ v: o.v, calm, allWindow, execEV: parseExec(o.execEV), byDay,
+               goStatus })
   }
 
   // entry-gated 新变体(可缺省:旧 JSON 无此段);ep1 区段(2026-07-17)同形并入展示
