@@ -7,6 +7,7 @@ import {
   type TripwireEntry,
 } from "@/lib/pm-scalp-honest-reader"
 import { PmScalpTabs } from "./tabs"
+import { StrategyRows } from "./strategy-rows"
 import { cn } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
@@ -118,47 +119,21 @@ function StrategyBoard({
         </p>
       ) : (
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[680px] text-xs">
-            <thead>
-              <tr className="border-b border-zinc-800 text-left text-zinc-500">
-                <th className="py-1.5 pr-3 font-normal">策略</th>
-                <th className="py-1.5 pr-3 font-normal">这是什么</th>
-                <th className="py-1.5 pr-3 font-normal">状态</th>
-                <th className="py-1.5 pr-3 text-right font-normal">实测执行</th>
-                <th className="py-1.5 text-right font-normal">样本</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const badge = goBadge(r, tripwire[r.v.split("-")[0]] ?? tripwire[r.v])
-                const e = r.execEV
-                return (
-                  <tr key={r.v} className="border-b border-zinc-800/50 last:border-0 align-top">
-                    <td className="py-2 pr-3 font-mono text-zinc-200 whitespace-nowrap">{r.v}</td>
-                    <td className="py-2 pr-3 text-zinc-400 leading-5">{STRATEGY_DESC[r.v] ?? "—"}</td>
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      <span className={cn("rounded px-1.5 py-px text-[10px]", badge.cls)}>{badge.text}</span>
-                    </td>
-                    <td className="py-2 pr-3 text-right tabular-nums whitespace-nowrap">
-                      {e == null || e.filled === 0 ? (
-                        <span className="text-zinc-500">{e ? "0 笔实测" : "—"}</span>
-                      ) : (
-                        <>
-                          <span className={cn("font-semibold", pnlClass(e.netSum))}>{fmtUsd(e.netSum)}</span>
-                          <span className="ml-1 text-zinc-600">
-                            {e.w}W{e.l}L
-                          </span>
-                        </>
-                      )}
-                    </td>
-                    <td className="py-2 text-right tabular-nums text-zinc-500 whitespace-nowrap">
-                      {e ? `${e.filled}成/${e.n}签` : "—"}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+          <StrategyRows
+            rows={rows.map((r) => {
+              const badge = goBadge(r, tripwire[r.v.split("-")[0]] ?? tripwire[r.v])
+              const e = r.execEV
+              return {
+                v: r.v,
+                desc: STRATEGY_DESC[r.v] ?? "—",
+                badgeText: badge.text,
+                badgeCls: badge.cls,
+                exec: e
+                  ? { netSum: e.netSum, w: e.w, l: e.l, filled: e.filled, n: e.n }
+                  : null,
+              }
+            })}
+          />
           <p className="mt-2 text-[11px] leading-5 text-zinc-600">{ARCHIVED_NOTE}</p>
           <p className="mt-1 text-[11px] leading-5 text-zinc-500">
             实测执行=真实成交模拟的费后盈亏(taker 计费/maker 悲观队列,拿不到 credit 不算成);
