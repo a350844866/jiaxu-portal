@@ -1,5 +1,7 @@
 import Link from "next/link"
 import { readPmPaperDetail } from "@/lib/pm-paper-detail-reader"
+import { readEventLane } from "@/lib/pm-paper-event-reader"
+import { EventLanePanel } from "@/components/dashboard/pm-paper/event-lane-panel"
 import { StatusHeader } from "@/components/dashboard/pm-paper/status-header"
 import { OpenOrdersTable, PositionsTable } from "@/components/dashboard/pm-paper/orders-positions-table"
 import { PredictionsTable } from "@/components/dashboard/pm-paper/predictions-table"
@@ -17,7 +19,7 @@ function ageText(sec: number | null): string {
 }
 
 export default async function PmPaperPage() {
-  const detail = await readPmPaperDetail()
+  const [detail, eventLane] = await Promise.all([readPmPaperDetail(), readEventLane()])
 
   if (detail.bootstrapping) {
     return (
@@ -55,6 +57,8 @@ export default async function PmPaperPage() {
       </header>
 
       <StatusHeader detail={detail} />
+
+      <EventLanePanel lane={eventLane} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <OpenOrdersTable rows={detail.openOrders} />

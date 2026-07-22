@@ -170,6 +170,12 @@ export default async function PmScalpRealPage() {
         <div className="absolute top-1/2 right-[10%] h-[28rem] w-[28rem] rounded-full bg-cyan-500/[0.04] blur-3xl" />
       </div>
 
+      {/* 2026-07-22 品类收档:EP1-M 探针 50 单额度耗尽正常收官后,品类级证据判死 */}
+      <div className="rounded-xl border border-amber-900/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-200/90">
+        ⚰️ <span className="font-semibold">实盘已于 2026-07-22 随品类收档</span> — EP1-M 探针 50 单批正常收官
+        (30 成交 28W2L,−$2.90 exec 口径),毒性分析证明 fill 事件本身翻负 edge。本页为末次状态存档,不再更新。
+      </div>
+
       <header className="space-y-3">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <h1 className="text-xl font-bold text-zinc-50">pm-scalp 实盘</h1>

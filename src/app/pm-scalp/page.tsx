@@ -203,6 +203,13 @@ export default async function PmScalpPage() {
         <div className="absolute top-1/2 right-[10%] h-[28rem] w-[28rem] rounded-full bg-violet-500/[0.04] blur-3xl" />
       </div>
 
+      {/* 2026-07-22 品类收档:数据源已停,本页为末次状态存档 */}
+      <div className="rounded-xl border border-amber-900/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-200/90">
+        ⚰️ <span className="font-semibold">本品类已于 2026-07-22 收档</span> — 三链证据判死(maker 逆向选择 /
+        taker 肉仅存于 lag0 / 结构套利系采集伪影),采集与模拟已全部停止、tick 数据已清理。
+        以下为收档时点的末次状态存档,不再更新。判决与证据链见 vault「pm-scalp微结构实验」。
+      </div>
+
       <header className="space-y-2">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <h1 className="text-xl font-bold text-zinc-50">pm-scalp 微结构实验</h1>
