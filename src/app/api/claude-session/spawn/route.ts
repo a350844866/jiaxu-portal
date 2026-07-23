@@ -7,7 +7,9 @@
  *  2. 起出来的会话只有持 Anthropic 账号者能驱动（claude.ai URL 侧鉴权），SSH 调用方
  *     驱动不了。宿主 key 又是 forced-command，只能起空会话（见 spawn-vault-claude.sh）。
  * ⇒ 偷到 cookie 的攻击者最坏只能造几个闲置会话（驱动不了）——DoS 级，非 RCE。
- * 兜底：每 IP 限流 + 宿主 6 会话上限。绝不接受任何 prompt 参数。
+ * 兜底：每 IP 限流 + 宿主侧闲置池回收（闲置 <10 永不回收；满 10 按闲置最久
+ * 优先淘汰至 9）+ 12 会话硬上限（详见 spawn-vault-claude.sh，2026-07-23 政策）。
+ * 绝不接受任何 prompt 参数。
  */
 import { NextRequest, NextResponse } from "next/server"
 import { verifySessionToken, clientIp, COOKIE_NAME } from "@/lib/auth"
