@@ -71,7 +71,7 @@ function codexWeeklyResetUtc(): Date {
   return new Date(anchor.getTime() + weeksPassed * weekMs)
 }
 
-export type SystemName = "mt4" | "ibkr" | "quant-flow" | "auto-content" | "interactive" | "other" | "mbp"
+export type SystemName = "mt4" | "ibkr" | "quant-flow" | "auto-content" | "pm-paper" | "interactive" | "other" | "mbp"
 
 export interface SystemSummary {
   system: SystemName
@@ -106,7 +106,7 @@ export interface UsageLive {
   }
 }
 
-const ALL_SYSTEMS: SystemName[] = ["mt4", "ibkr", "quant-flow", "auto-content", "interactive", "other"]
+const ALL_SYSTEMS: SystemName[] = ["mt4", "ibkr", "quant-flow", "auto-content", "pm-paper", "interactive", "other"]
 
 interface QuantFlowTracerEntry {
   ts: number
