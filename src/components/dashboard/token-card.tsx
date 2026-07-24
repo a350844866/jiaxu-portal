@@ -15,6 +15,7 @@ interface SystemSummary {
   today_cost_usd: number
   today_total_tokens: number
   month_cost_usd: number
+  month_total_tokens: number
   last1h_cost_usd: number
   last1h_total_tokens: number
   last_event_ts: string | null
@@ -27,6 +28,7 @@ interface UsageLive {
     today_cost_usd: number
     today_total_tokens: number
     month_cost_usd: number
+    month_total_tokens: number
     last1h_total_tokens: number
   }
   zhanzhi: {
@@ -62,6 +64,14 @@ function fmtCost(n: number): string {
   if (n >= 100) return "$" + n.toFixed(0)
   if (n >= 10)  return "$" + n.toFixed(1)
   return "$" + n.toFixed(2)
+}
+
+// 月度总量以「亿」为单位展示（1 亿 = 1e8）
+function fmtYi(n: number): string {
+  const yi = n / 1e8
+  if (yi >= 100) return yi.toFixed(0) + " 亿"
+  if (yi >= 10)  return yi.toFixed(1) + " 亿"
+  return yi.toFixed(2) + " 亿"
 }
 
 function freshness(iso: string | null): { text: string; stale: boolean } {
@@ -132,6 +142,7 @@ export function TokenCard() {
               </span>
             )}
             <span>本月 <span className="text-zinc-200">{fmtCost(data.totals.month_cost_usd)}</span></span>
+            <span>本月 token <span className="text-zinc-200">{fmtYi(data.totals.month_total_tokens)}</span></span>
             <span>最近 1h <span className="text-zinc-200">{fmtTokens(data.totals.last1h_total_tokens)}</span></span>
           </div>
         )}

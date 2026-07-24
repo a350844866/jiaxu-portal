@@ -82,6 +82,7 @@ export interface SystemSummary {
   today_cost_usd: number
   today_total_tokens: number
   month_cost_usd: number
+  month_total_tokens: number
   last1h_cost_usd: number
   last1h_total_tokens: number
   last_event_ts: string | null
@@ -94,6 +95,7 @@ export interface UsageLive {
     today_cost_usd: number
     today_total_tokens: number
     month_cost_usd: number
+    month_total_tokens: number
     last1h_total_tokens: number
   }
   // 展志(zz-claude relay) 今日成本切片 + 占今日总量百分比。zz 折在 interactive 桶
@@ -185,6 +187,7 @@ interface BucketUsageSummary {
   today_cost_usd: number
   today_total_tokens: number
   month_cost_usd: number
+  month_total_tokens: number
   last1h_cost_usd: number
   last1h_total_tokens: number
   last_event_ts: string | null
@@ -197,6 +200,7 @@ function emptyBucketUsageSummary(): BucketUsageSummary {
     today_cost_usd: 0,
     today_total_tokens: 0,
     month_cost_usd: 0,
+    month_total_tokens: 0,
     last1h_cost_usd: 0,
     last1h_total_tokens: 0,
     last_event_ts: null,
@@ -209,6 +213,7 @@ function mergeBucketUsage(target: SystemSummary, extra: BucketUsageSummary): voi
   target.today_cost_usd += extra.today_cost_usd
   target.today_total_tokens += extra.today_total_tokens
   target.month_cost_usd += extra.month_cost_usd
+  target.month_total_tokens += extra.month_total_tokens
   target.last1h_cost_usd += extra.last1h_cost_usd
   target.last1h_total_tokens += extra.last1h_total_tokens
   if (extra.last_event_ts && (!target.last_event_ts || extra.last_event_ts > target.last_event_ts)) {
@@ -231,6 +236,7 @@ function summarizeQuantFlowTracer(entries: QuantFlowTracerEntry[]): BucketUsageS
 
     if (entry.ts >= monthEpoch) {
       acc.month_cost_usd += cost
+      acc.month_total_tokens += entry.total_tokens
     }
     if (entry.ts >= todayEpoch) {
       acc.today_input += entry.prompt_tokens
@@ -260,6 +266,7 @@ function buildHostSummary(rows: mysql.RowDataPacket[], host: SystemName): System
     today_cost_usd: 0,
     today_total_tokens: 0,
     month_cost_usd: 0,
+    month_total_tokens: 0,
     last1h_cost_usd: 0,
     last1h_total_tokens: 0,
     last_event_ts: null,
@@ -271,6 +278,7 @@ function buildHostSummary(rows: mysql.RowDataPacket[], host: SystemName): System
     acc.today_cache_create += toNumber(r.today_cache_create)
     acc.today_cost_usd += toNumber(r.today_cost_usd)
     acc.month_cost_usd += toNumber(r.month_cost_usd)
+    acc.month_total_tokens += toNumber(r.month_total_tokens)
     acc.last1h_cost_usd += toNumber(r.last1h_cost_usd)
     acc.last1h_total_tokens += toNumber(r.last1h_total_tokens)
     const ts = r.last_event_ts
@@ -298,6 +306,9 @@ export async function getUsageLive(): Promise<UsageLive> {
       SUM(CASE WHEN ts >= ?                                  THEN cache_create_tokens  ELSE 0 END) AS today_cache_create,
       SUM(CASE WHEN ts >= ?                                  THEN cost_usd             ELSE 0 END) AS today_cost_usd,
       SUM(CASE WHEN ts >= ?                                  THEN cost_usd             ELSE 0 END) AS month_cost_usd,
+      SUM(CASE WHEN ts >= ?
+               THEN input_tokens + output_tokens + cache_read_tokens + cache_create_tokens
+               ELSE 0 END) AS month_total_tokens,
       SUM(CASE WHEN ts >= UTC_TIMESTAMP() - INTERVAL 1 HOUR  THEN cost_usd             ELSE 0 END) AS last1h_cost_usd,
       SUM(CASE WHEN ts >= UTC_TIMESTAMP() - INTERVAL 1 HOUR
                THEN input_tokens + output_tokens + cache_read_tokens + cache_create_tokens
@@ -307,8 +318,8 @@ export async function getUsageLive(): Promise<UsageLive> {
     WHERE ts >= LEAST(?, UTC_TIMESTAMP() - INTERVAL 1 HOUR)
     GROUP BY system_name, host
     `,
-    // placeholders: today_input, today_output, today_cache_read, today_cache_create, today_cost_usd, month_cost_usd, WHERE
-    [todayUtc, todayUtc, todayUtc, todayUtc, todayUtc, monthUtc, monthUtc],
+    // placeholders: today_input, today_output, today_cache_read, today_cache_create, today_cost_usd, month_cost_usd, month_total_tokens, WHERE
+    [todayUtc, todayUtc, todayUtc, todayUtc, todayUtc, monthUtc, monthUtc, monthUtc],
   )
 
   // 分区必须完备：home 一桶，其余全部归 MBP 桶（目前 mbp 是唯一远端 root，
@@ -334,6 +345,7 @@ export async function getUsageLive(): Promise<UsageLive> {
       today_total_tokens:
         today_input + today_output + today_cache_read + today_cache_create,
       month_cost_usd: toNumber(r?.month_cost_usd),
+      month_total_tokens: toNumber(r?.month_total_tokens),
       last1h_cost_usd: toNumber(r?.last1h_cost_usd),
       last1h_total_tokens: toNumber(r?.last1h_total_tokens),
       last_event_ts: r?.last_event_ts
@@ -372,10 +384,11 @@ export async function getUsageLive(): Promise<UsageLive> {
       acc.today_cost_usd += s.today_cost_usd
       acc.today_total_tokens += s.today_total_tokens
       acc.month_cost_usd += s.month_cost_usd
+      acc.month_total_tokens += s.month_total_tokens
       acc.last1h_total_tokens += s.last1h_total_tokens
       return acc
     },
-    { today_cost_usd: 0, today_total_tokens: 0, month_cost_usd: 0, last1h_total_tokens: 0 }
+    { today_cost_usd: 0, today_total_tokens: 0, month_cost_usd: 0, month_total_tokens: 0, last1h_total_tokens: 0 }
   )
 
   // 展志(zz-claude) vs 我(Taieo) 今日对比 —— **Claude 池口径** (usage_events only)，
@@ -758,6 +771,7 @@ function codexBucketByCwdPrefix(cwdPrefix: string): BucketUsageSummary {
     const cost = computeCodexCost(s.model, s.input_tokens, s.cached_input_tokens, s.output_tokens)
     if (s.created_at >= monthEpoch) {
       acc.month_cost_usd += cost
+      acc.month_total_tokens += s.total_tokens
     }
     if (s.created_at >= todayEpoch) {
       acc.today_input += s.input_tokens
