@@ -8,7 +8,9 @@
  *     驱动不了。宿主 key 又是 forced-command，只能起空会话（见 spawn-vault-claude.sh）。
  * ⇒ 偷到 cookie 的攻击者最坏只能造几个闲置会话（驱动不了）——DoS 级，非 RCE。
  * 兜底：每 IP 限流 + 宿主侧闲置池回收（闲置 <10 永不回收；满 10 按闲置最久
- * 优先淘汰至 9）+ 12 会话硬上限（详见 spawn-vault-claude.sh，2026-07-23 政策）。
+ * 优先淘汰至 9）+ 12 会话硬上限——命中硬上限先淘汰超 1h grace 的最闲会话腾位，
+ * 全员活跃才拒绝（详见 spawn-vault-claude.sh，2026-07-23 政策 + 2026-07-31 修：
+ * statusline 周期重绘致 window_activity 常刷新，闲置池永远攒不满、淘汰从未触发）。
  * 绝不接受任何 prompt 参数。
  */
 import { NextRequest, NextResponse } from "next/server"
