@@ -29,11 +29,13 @@ services:
       - CODEX_REMOTE_DIRS=[{"dir":"/data/codex-mbp"}]
       - QUANT_FLOW_LLM_CALLS_PATH=/data/quant-flow-llm-calls
       - PORTAL_STATE_DIR=/data/portal-state
+      - WORKSTREAM_NAMES_DIR=/data/ws-names
       - VAULT_DIR=/data/vault
       - SERENITY_CORPUS_DIR=/data/x-corpus
       - AI_CHAIN_DATA_DIR=/data/ai-chain
       - PM_PAPER_STATE_DIR=/data/pm-paper/state
       - PM_SCALP_DIR=/data/pm-scalp
+      - TRADEMAX_DATA_DIR=/data/trademax-observer
       - WIFE_OBSERVER_API_TOKEN=${WIFE_OBSERVER_API_TOKEN}
       - WIFE_OBSERVER_BACKEND_URL=${WIFE_OBSERVER_BACKEND_URL}
       - N8N_API_URL=${N8N_API_URL}
@@ -67,6 +69,12 @@ services:
       - /data/pm-paper/state:/data/pm-paper/state:ro
       # pm-scalp 微结构实验看板 — 秒级窗口数据 + 模拟账本(ro,只读展示)
       - /data/pm-scalp:/data/pm-scalp:ro
+      # trademax 观摩号看板 — trades.csv/live.jsonl/watch.status/account.json(ro)
+      # 只挂 data/ 子目录：.env 里有观摩密码，页面没有理由能读到它
+      - /data/trademax-observer/data:/data/trademax-observer/data:ro
+      # 战线显示名：portal 页面可编辑的唯一权威源（**rw**，其余 claude-usage 数据仍只读）
+      # 只挂这一个子目录，不挂整个 /data/claude-usage —— 页面没有理由能写会话数据或 watcher.env
+      - /data/claude-usage/portal-editable:/data/ws-names
     extra_hosts:
       - "host.docker.internal:host-gateway"
       # qB 健康检查走 LAN .67 直连(2.5G):域名保证证书 CN 匹配 + 过 qB HostHeaderValidation
