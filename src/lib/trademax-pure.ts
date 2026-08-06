@@ -680,8 +680,23 @@ export interface EntryFeature {
   z: number
 }
 
+export interface EntryTickBlock {
+  generatedAt: string
+  n: number
+  /** median directional move over the last 120 / 30 / 10 seconds before entry */
+  move120s: number | null
+  move30s: number | null
+  move10s: number | null
+  withTrend10s: number
+  withTrend30s: number
+  /** the account's real spread, measured by aligning its fills to tick bid/ask */
+  brokerSpread: number | null
+  feedSpreadMedian: number | null
+}
+
 export interface EntryAnalysis {
   generatedAt: string
+  tick: EntryTickBlock | null
   decisions: number
   aligned: number
   baselineSamples: number
@@ -703,8 +718,20 @@ export interface EntryAnalysis {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function parseEntryAnalysis(raw: any): EntryAnalysis | null {
   if (!raw || typeof raw !== "object" || !Array.isArray(raw.features)) return null
+  const t = raw.tick
   return {
     generatedAt: String(raw.generated_at ?? ""),
+    tick: t ? {
+      generatedAt: String(t.generated_at ?? ""),
+      n: Number(t.n ?? 0),
+      move120s: t.move_120s ?? null,
+      move30s: t.move_30s ?? null,
+      move10s: t.move_10s ?? null,
+      withTrend10s: Number(t.with_trend_10s ?? 0),
+      withTrend30s: Number(t.with_trend_30s ?? 0),
+      brokerSpread: t.broker_spread ?? null,
+      feedSpreadMedian: t.feed_spread_median ?? null,
+    } : null,
     decisions: Number(raw.decisions ?? 0),
     aligned: Number(raw.aligned ?? 0),
     baselineSamples: Number(raw.baseline_samples ?? 0),
@@ -817,14 +844,21 @@ export function ruleSet(
     },
     entry ? {
       id: 11, confidence: "medium",
-      rule: "入场是顺势的「推动后回抽」——不是追破新高新低",
+      rule: entry.tick
+        ? "入场是顺势推进途中——价格此刻仍在往前走，但整波还没突破前 30 分钟极值"
+        : "入场强烈顺势，且整波还没突破前 30 分钟极值",
       evidence: (() => {
         const a30 = entry.trendAgreement.find((t) => t.window === 30)
         const pos = entry.features.find((f) => f.key === "dpos30")
-        return `${a30 ? Math.round(a30.share * 100) : "—"}% 的入场与前 30 分钟走势同向；` +
+        const base = `${a30 ? Math.round(a30.share * 100) : "—"}% 的入场与前 30 分钟走势同向；` +
           `入场点位于前 30 分钟区间的 ${pos ? (pos.real * 100).toFixed(0) : "—"}% 处` +
           `（随机基线 ${pos ? (pos.base * 100).toFixed(0) : "—"}%，z=${pos ? pos.z.toFixed(1) : "—"}）；` +
-          `只有 ${entry.pullback.alreadyBroken}/${entry.pullback.n} 笔已突破极值`
+          `只有 ${entry.pullback.alreadyBroken}/${entry.pullback.n} 笔已突破 30 分钟极值`
+        return entry.tick
+          ? base + `；tick 级：入场前 30 秒仍顺势走了 ${entry.tick.move30s?.toFixed(2) ?? "—"} 美元` +
+            `（${entry.tick.withTrend30s}/${entry.tick.n} 笔），前 10 秒 ${entry.tick.move10s?.toFixed(2) ?? "—"}` +
+            ` → 不是等回抽，是推进中进场`
+          : base
       })(),
     } : {
       id: 11, confidence: "unknown",

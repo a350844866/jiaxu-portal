@@ -319,6 +319,9 @@ describe("parseEntryAnalysis", () => {
       { key: "atr14", label: "ATR14(波动率)", real: 1.943, base: 1.912, z: 0.32 },
     ],
     clock: { seconds_in_first5: 9, minute_mod5: 15, minute_mod15: 6, n: 72 },
+    tick: { generated_at: "2026-08-06T08:50:45+00:00", n: 72, move_120s: 2.24,
+            move_30s: 1.22, move_10s: 0.54, with_trend_10s: 55, with_trend_30s: 65,
+            broker_spread: 0.53, feed_spread_median: 0.59 },
     pullback: { dist_ext30_median: 1.38, atr_median: 1.68, dist_in_atr: 0.82,
                 already_broken: 1, within_1atr: 43, n: 72 },
     gaps: { median_min: 32, under2min: 11, n: 71 },
@@ -338,6 +341,28 @@ describe("parseEntryAnalysis", () => {
     expect(parseEntryAnalysis({ features: "nope" })).toBeNull()
   })
 
+  it("carries the tick block through, including the measured broker spread", () => {
+    const e = parseEntryAnalysis(raw)!
+    expect(e.tick?.brokerSpread).toBeCloseTo(0.53, 2)
+    expect(e.tick?.withTrend30s).toBe(65)
+    // the tick pass is optional — the artifact predates it
+    const noTick = { ...raw } as Record<string, unknown>
+    delete noTick.tick
+    expect(parseEntryAnalysis(noTick)!.tick).toBeNull()
+  })
+
+  it("states the entry as mid-push, not as a pullback, when ticks are present", () => {
+    const s = stopStructure(deals)
+    const c = concurrency(deals)
+    const r = riskProfile(deals, 846.63, s.medianRiskUsd, 500)
+    const rules = ruleSet(deals, s, c, r, timing(deals), parseEntryAnalysis(raw))
+    // 1m bars made this look like a pullback entry; ticks showed price was
+    // still moving at the moment of entry. The rule text must not regress.
+    expect(rules[10].rule).toContain("推进途中")
+    expect(rules[10].rule).not.toContain("回抽")
+    expect(rules[10].evidence).toContain("推进中进场")
+  })
+
   it("upgrades rule 11 and adds rule 12 once the entry artifact exists", () => {
     const s = stopStructure(deals)
     const c = concurrency(deals)
@@ -345,7 +370,6 @@ describe("parseEntryAnalysis", () => {
     const withEntry = ruleSet(deals, s, c, r, timing(deals), parseEntryAnalysis(raw))
     expect(withEntry).toHaveLength(12)
     expect(withEntry[10].confidence).toBe("medium")
-    expect(withEntry[10].rule).toContain("回抽")
     expect(withEntry[10].evidence).toContain("96%")
     expect(withEntry[11].evidence).toContain("9/72")
 

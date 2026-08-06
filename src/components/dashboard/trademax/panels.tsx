@@ -667,12 +667,29 @@ export function EntryPanel({ entry }: { entry: EntryAnalysis | null }) {
         </div>
       </div>
 
+      {entry.tick && (
+        <div className="mt-4 rounded-lg border border-sky-500/25 bg-sky-500/[0.06] px-3 py-2.5 text-[11px] leading-5 text-zinc-300">
+          <span className="font-semibold text-sky-300">tick 级复核（{entry.tick.n} 笔，1 分钟 K 线看不到这一层）：</span>
+          入场前 120 秒顺势走了 <span className="tabular-nums text-sky-200">{entry.tick.move120s?.toFixed(2) ?? "—"}</span> 美元，
+          前 30 秒 <span className="tabular-nums text-sky-200">{entry.tick.move30s?.toFixed(2) ?? "—"}</span>（{entry.tick.withTrend30s}/{entry.tick.n} 笔顺势），
+          前 10 秒还在 <span className="tabular-nums text-sky-200">{entry.tick.move10s?.toFixed(2) ?? "—"}</span>（{entry.tick.withTrend10s}/{entry.tick.n}）。
+          <span className="text-amber-300">
+            这推翻了「等回抽再进」的读法</span>——1 分钟口径下「最后一分钟很平」是个假象：那个数算的是入场 K 线的开盘价减前一根收盘价，
+            在连续行情里本来就恒等于 0，量到的不是停顿。
+          {entry.tick.brokerSpread != null && (
+            <> 同一批 tick 还量出这个账户的<span className="text-zinc-100">真实点差 ≈ ${entry.tick.brokerSpread.toFixed(2)}/盎司</span>
+              （把它的成交价对齐 tick 的 bid/ask 反解；空单偏移仅 0.035 证明两个报价源 bid 对齐）。</>
+          )}
+        </div>
+      )}
+
       <div className="mt-4 grid gap-2 lg:grid-cols-2">
         <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-2 text-[11px] leading-5 text-zinc-300">
           <span className="font-semibold text-emerald-300">结论：</span>
-          顺势的「推动之后回抽一点」再进场。前 30 分钟已经走出一波，价格停在这波的高位但<span className="text-emerald-200">还没</span>创新极值
-          （中位差 {entry.pullback.distExt30Median?.toFixed(2) ?? "—"} 美元），
-          价格在均线上方、方向化 RSI 偏高，此时开仓。
+          顺势<span className="text-emerald-200">推进途中</span>入场——价格此刻还在往前走，
+          但整波<span className="text-emerald-200">还没</span>突破前 30 分钟的极值
+          （中位差 {entry.pullback.distExt30Median?.toFixed(2) ?? "—"} 美元，只有 {entry.pullback.alreadyBroken}/{entry.pullback.n} 笔已突破），
+          价格在均线上方、方向化 RSI 偏高。既不是追破位，也不是等回踩。
         </div>
         <div className="rounded-lg border border-zinc-700/60 bg-zinc-950/40 px-3 py-2 text-[11px] leading-5 text-zinc-400">
           <span className="font-semibold text-zinc-300">这些它不看：</span>

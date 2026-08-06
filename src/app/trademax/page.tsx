@@ -4,6 +4,7 @@ import {
   Vitals, EquityChart, MoneySource, RulesTable, StopPanel, DayTable,
   TimingPanel, RiskPanel, LiveFeed, AnomalyPanel, DealsTable, EntryPanel,
 } from "@/components/dashboard/trademax/panels"
+import { AutoRefresh } from "@/components/dashboard/trademax/auto-refresh"
 
 export const dynamic = "force-dynamic"
 
@@ -40,6 +41,7 @@ export default async function TradeMaxPage() {
           <span className="text-xs text-zinc-500">
             trademax-observer · 只读观察 + 策略反推
           </span>
+          <AutoRefresh seconds={15} />
           <Link href="/" className="ml-auto text-xs text-zinc-500 hover:text-zinc-300">← 返回首页</Link>
         </div>
         <p className="max-w-4xl text-sm leading-6 text-zinc-400">
