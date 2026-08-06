@@ -9,7 +9,7 @@
 import type {
   Bucket, ConcurrencyCheck, DayStat, Deal, EquityCurve, LiveEvent,
   PendingOrder, Performance, RiskProfile, Rule, StopStructure, TimingStats,
-  OpenPosition,
+  OpenPosition, EntryAnalysis,
 } from "@/lib/trademax-pure"
 import { cn } from "@/lib/utils"
 
@@ -405,7 +405,7 @@ export function RiskPanel({ risk, perf, equity }: { risk: RiskProfile; perf: Per
                style={{ width: `${p.pct * 100}%` }} />
         </div>
         <p className="mt-1.5 text-[11px] leading-5 text-zinc-500">
-          在 {p.need} 笔并跨过不同行情之前，这套东西是不是正期望**无法判断**。当前 profit factor 与胜率都在样本噪声范围内。
+          在 {p.need} 笔并跨过不同行情之前，这套东西是不是正期望<span className="text-zinc-300">无法判断</span>。当前 profit factor 与胜率都在样本噪声范围内。
         </p>
       </div>
 
@@ -592,6 +592,103 @@ export function DealsTable({ deals, lockLevel }: { deals: Deal[]; lockLevel: num
           </tbody>
         </table>
       </div>
+    </Panel>
+  )
+}
+
+// ── 12. entry trigger ─────────────────────────────────────────────────────
+
+/**
+ * The one panel that answers "为什么在那一刻进场". Everything else on this page
+ * comes from order metadata; this comes from joining each fill to XAUUSD 1m
+ * bars and comparing against random minutes in the same sessions.
+ */
+export function EntryPanel({ entry }: { entry: EntryAnalysis | null }) {
+  if (!entry) {
+    return (
+      <Panel title="入场触发反推" hint="需要 K 线对齐">
+        <p className="text-xs text-zinc-500">
+          还没有 <code>data/entry-analysis.json</code>。在家服跑{" "}
+          <code>/data/llm-macro-alpha-research/.venv/bin/python
+          /data/trademax-observer/scripts/entry_reverse.py</code> 生成。
+        </p>
+      </Panel>
+    )
+  }
+  const strong = entry.features.filter((f) => Math.abs(f.z) >= 2)
+  const flat = entry.features.filter((f) => Math.abs(f.z) < 2)
+  const maxZ = Math.max(3, ...entry.features.map((f) => Math.abs(f.z)))
+
+  return (
+    <Panel title="入场触发反推（把每笔成交对齐到 XAUUSD 1 分钟线）"
+           hint={`${entry.aligned}/${entry.decisions} 个决策对齐成功，与 ${entry.baselineSamples} 个「同日同时段随机分钟」对照；|z|≥2 才算有信号`}>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {entry.trendAgreement.map((t) => (
+          <Tile key={t.window} label={`与前 ${t.window} 分钟同向`}
+                value={`${(t.share * 100).toFixed(0)}%`}
+                tone={t.share > 0.8 ? "good" : "neutral"}
+                sub={t.share > 0.8 ? "强顺势" : undefined} />
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+        <Tile label="距前 30 分钟同向极值"
+              value={entry.pullback.distExt30Median != null ? `$${entry.pullback.distExt30Median.toFixed(2)}` : "—"}
+              sub={entry.pullback.distInAtr != null ? `≈ ${entry.pullback.distInAtr.toFixed(2)} 个 ATR，正数=还没摸到极值` : undefined} />
+        <Tile label="已突破极值才进的" value={`${entry.pullback.alreadyBroken} / ${entry.pullback.n}`}
+              tone="warn" sub="所以不是「追破新高新低」" />
+        <Tile label="入场秒落在每分钟前 5 秒"
+              value={`${entry.clock.secondsInFirst5} / ${entry.clock.n}`}
+              sub="没有 K 线周期指纹 → 逐 tick 连续判断" />
+      </div>
+
+      <div className="mt-4">
+        <div className="mb-2 text-xs text-zinc-300">候选触发条件 vs 随机分钟（横条 = |z|）</div>
+        <div className="space-y-1.5">
+          {[...strong, ...flat].map((f) => {
+            const w = (Math.abs(f.z) / maxZ) * 100
+            const hot = Math.abs(f.z) >= 2
+            return (
+              <div key={f.key} className="flex items-center gap-2 text-[11px]">
+                <span className="w-36 shrink-0 text-zinc-400">{f.label}</span>
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800/60">
+                  <div className={cn("h-full rounded-full", hot ? "bg-emerald-500/70" : "bg-zinc-600/60")}
+                       style={{ width: `${w}%` }} />
+                </div>
+                <span className={cn("w-28 shrink-0 text-right tabular-nums", hot ? "text-emerald-400" : "text-zinc-600")}>
+                  {f.real.toFixed(2)} vs {f.base.toFixed(2)}
+                </span>
+                <span className={cn("w-16 shrink-0 text-right tabular-nums", hot ? "text-emerald-300" : "text-zinc-600")}>
+                  z={f.z.toFixed(1)}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 lg:grid-cols-2">
+        <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-2 text-[11px] leading-5 text-zinc-300">
+          <span className="font-semibold text-emerald-300">结论：</span>
+          顺势的「推动之后回抽一点」再进场。前 30 分钟已经走出一波，价格停在这波的高位但<span className="text-emerald-200">还没</span>创新极值
+          （中位差 {entry.pullback.distExt30Median?.toFixed(2) ?? "—"} 美元），
+          价格在均线上方、方向化 RSI 偏高，此时开仓。
+        </div>
+        <div className="rounded-lg border border-zinc-700/60 bg-zinc-950/40 px-3 py-2 text-[11px] leading-5 text-zinc-400">
+          <span className="font-semibold text-zinc-300">这些它不看：</span>
+          {flat.map((f) => f.label).join(" / ") || "—"} —— 全部与随机分钟无差异，
+          说明没有波动率闸、没有整数关口逻辑、也不按固定周期轮询。
+        </div>
+      </div>
+
+      <p className="mt-3 text-[11px] leading-5 text-zinc-500">
+        <span className="text-amber-300">口径提醒：</span>
+        动量类特征彼此高度相关，能确定的是<span className="text-zinc-300">「趋势延续」这一族</span>，
+        不能断言具体用的是哪根均线/哪个指标。而且单靠这个方向闸不够选择性
+        （放宽到覆盖 90% 实际入场时，市场绝大多数时间都满足），实际节流主要来自
+        「一次一单」+ 决策间隔中位 {entry.gaps.medianMin?.toFixed(0) ?? "—"} 分钟 —— 还有一层触发逻辑没看到。
+        生成于 {entry.generatedAt.slice(0, 16).replace("T", " ")} UTC。
+      </p>
     </Panel>
   )
 }

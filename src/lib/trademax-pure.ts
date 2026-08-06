@@ -669,6 +669,75 @@ export function parseLiveFeed(text: string, limit = 40): LiveEvent[] {
   return out.slice(-limit).reverse()
 }
 
+// ── entry-trigger analysis (produced by scripts/entry_reverse.py) ─────────
+
+export interface EntryFeature {
+  key: string
+  label: string
+  real: number
+  base: number
+  /** how many standard errors the real entries sit away from random minutes */
+  z: number
+}
+
+export interface EntryAnalysis {
+  generatedAt: string
+  decisions: number
+  aligned: number
+  baselineSamples: number
+  /** share of entries agreeing with the prior N-minute direction, keyed by N */
+  trendAgreement: { window: number; share: number }[]
+  features: EntryFeature[]
+  clock: { secondsInFirst5: number; minuteMod5: number; minuteMod15: number; n: number }
+  pullback: {
+    distExt30Median: number | null
+    atrMedian: number | null
+    distInAtr: number | null
+    alreadyBroken: number
+    within1Atr: number
+    n: number
+  }
+  gaps: { medianMin: number | null; under2min: number; n: number }
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export function parseEntryAnalysis(raw: any): EntryAnalysis | null {
+  if (!raw || typeof raw !== "object" || !Array.isArray(raw.features)) return null
+  return {
+    generatedAt: String(raw.generated_at ?? ""),
+    decisions: Number(raw.decisions ?? 0),
+    aligned: Number(raw.aligned ?? 0),
+    baselineSamples: Number(raw.baseline_samples ?? 0),
+    trendAgreement: Object.entries(raw.trend_agreement ?? {})
+      .map(([w, share]) => ({ window: Number(w), share: Number(share) }))
+      .sort((a, b) => a.window - b.window),
+    features: raw.features.map((f: any) => ({
+      key: String(f.key), label: String(f.label),
+      real: Number(f.real), base: Number(f.base), z: Number(f.z),
+    })),
+    clock: {
+      secondsInFirst5: Number(raw.clock?.seconds_in_first5 ?? 0),
+      minuteMod5: Number(raw.clock?.minute_mod5 ?? 0),
+      minuteMod15: Number(raw.clock?.minute_mod15 ?? 0),
+      n: Number(raw.clock?.n ?? 0),
+    },
+    pullback: {
+      distExt30Median: raw.pullback?.dist_ext30_median ?? null,
+      atrMedian: raw.pullback?.atr_median ?? null,
+      distInAtr: raw.pullback?.dist_in_atr ?? null,
+      alreadyBroken: Number(raw.pullback?.already_broken ?? 0),
+      within1Atr: Number(raw.pullback?.within_1atr ?? 0),
+      n: Number(raw.pullback?.n ?? 0),
+    },
+    gaps: {
+      medianMin: raw.gaps?.median_min ?? null,
+      under2min: Number(raw.gaps?.under2min ?? 0),
+      n: Number(raw.gaps?.n ?? 0),
+    },
+  }
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 // ── the reverse-engineered rule set ───────────────────────────────────────
 
 export interface Rule {
@@ -684,7 +753,7 @@ export interface Rule {
  */
 export function ruleSet(
   deals: Deal[], stops: StopStructure, conc: ConcurrencyCheck,
-  risk: RiskProfile, tm: TimingStats,
+  risk: RiskProfile, tm: TimingStats, entry: EntryAnalysis | null = null,
 ): Rule[] {
   const symbols = [...new Set(deals.map((d) => d.symbol))]
   const fmt = (n: number | null, d = 2) => (n == null ? "—" : n.toFixed(d))
@@ -746,12 +815,30 @@ export function ruleSet(
       evidence: `含北京 02–05 点开仓 ${tm.hourly.slice(2, 6).reduce((a, b) => a + b, 0)} 笔；` +
         tm.sessions.map((s) => `${s.label} ${s.n}`).join(" / "),
     },
-    {
+    entry ? {
+      id: 11, confidence: "medium",
+      rule: "入场是顺势的「推动后回抽」——不是追破新高新低",
+      evidence: (() => {
+        const a30 = entry.trendAgreement.find((t) => t.window === 30)
+        const pos = entry.features.find((f) => f.key === "dpos30")
+        return `${a30 ? Math.round(a30.share * 100) : "—"}% 的入场与前 30 分钟走势同向；` +
+          `入场点位于前 30 分钟区间的 ${pos ? (pos.real * 100).toFixed(0) : "—"}% 处` +
+          `（随机基线 ${pos ? (pos.base * 100).toFixed(0) : "—"}%，z=${pos ? pos.z.toFixed(1) : "—"}）；` +
+          `只有 ${entry.pullback.alreadyBroken}/${entry.pullback.n} 笔已突破极值`
+      })(),
+    } : {
       id: 11, confidence: "unknown",
       rule: "入场触发条件（什么时候决定买/卖）",
-      evidence: "订单元数据里没有这个信息 —— 需要把 XAUUSD 分钟线跟每个入场点对齐后单独反推，见页尾说明",
+      evidence: "还没跑 scripts/entry_reverse.py，或 K 线未覆盖成交区间",
     },
-  ]
+    entry ? {
+      id: 12, confidence: "medium",
+      rule: "不看波动率、不看整数关口、不按 K 线周期触发",
+      evidence: `ATR / 点差 / 振幅 / 距整数关口 全部与随机分钟无差异（|z|<2）；` +
+        `入场秒数只有 ${entry.clock.secondsInFirst5}/${entry.clock.n} 落在每分钟前 5 秒 → ` +
+        `是逐 tick 连续判断，不是「新 K 线才动」的 EA`,
+    } : null,
+  ].filter(Boolean) as Rule[]
 }
 
 function avg(xs: number[]): number | null {

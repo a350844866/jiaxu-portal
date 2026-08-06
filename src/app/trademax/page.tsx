@@ -2,7 +2,7 @@ import Link from "next/link"
 import { readTradeMaxSnapshot } from "@/lib/trademax-reader"
 import {
   Vitals, EquityChart, MoneySource, RulesTable, StopPanel, DayTable,
-  TimingPanel, RiskPanel, LiveFeed, AnomalyPanel, DealsTable,
+  TimingPanel, RiskPanel, LiveFeed, AnomalyPanel, DealsTable, EntryPanel,
 } from "@/components/dashboard/trademax/panels"
 
 export const dynamic = "force-dynamic"
@@ -70,6 +70,8 @@ export default async function TradeMaxPage() {
 
       <RulesTable rules={s.rules} />
 
+      <EntryPanel entry={s.entry} />
+
       <StopPanel stops={s.stops} />
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -87,9 +89,9 @@ export default async function TradeMaxPage() {
         <h2 className="mb-2 text-sm font-semibold text-zinc-200">还没做到的部分</h2>
         <ul className="list-inside list-disc space-y-1">
           <li>
-            <span className="text-zinc-300">入场触发条件没反推出来</span>：订单元数据只说了「何时进、进多少、怎么退」，
-            没说「为什么在那一刻进」。要回答它必须把 XAUUSD 分钟线跟每个入场点对齐，逐个检验假设
-            （突破 N 根 K 线高低点 / 均线穿越 / 区间边缘回归 / 整数关口 / 时段开盘区间…）。
+            <span className="text-zinc-300">入场只反推到「族」，没到具体指标</span>：确定是趋势延续类
+            （见上面的入场触发反推），但动量特征彼此高度相关，说不出它到底用的哪根均线/哪个指标；
+            而且方向闸不够选择性，还有一层择时逻辑没看到。
           </li>
           <li><span className="text-zinc-300">EA 本体不可见</span>——原理性的，不是权限问题。</li>
           <li>移损与撤 TP 的<span className="text-zinc-300">触发阈值</span>还没坐实，靠上面的实时会话流慢慢攒。</li>

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest"
 import {
   parseServerTime, beijingHour, beijingDate, parseTradesCsv, performance,
   equityCurve, byDay, exitBuckets, stopStructure, concurrency, timing,
-  riskProfile, parseLiveFeed, parseAccountBar, ruleSet,
+  riskProfile, parseLiveFeed, parseAccountBar, ruleSet, parseEntryAnalysis,
 } from "../trademax-pure"
 
 const HEADER =
@@ -306,5 +306,51 @@ describe("ruleSet", () => {
     expect(rules[5].evidence).toContain(`${s.lockLevelCount} 笔`)
     // the entry trigger is explicitly *not* claimed
     expect(rules[10].confidence).toBe("unknown")
+  })
+})
+
+describe("parseEntryAnalysis", () => {
+  const raw = {
+    generated_at: "2026-08-06T08:13:54+00:00",
+    decisions: 72, aligned: 72, baseline_samples: 4320,
+    trend_agreement: { "5": 0.944, "30": 0.958, "15": 0.847 },
+    features: [
+      { key: "ret30", label: "前30分钟位移", real: 7.686, base: -0.137, z: 7.44 },
+      { key: "atr14", label: "ATR14(波动率)", real: 1.943, base: 1.912, z: 0.32 },
+    ],
+    clock: { seconds_in_first5: 9, minute_mod5: 15, minute_mod15: 6, n: 72 },
+    pullback: { dist_ext30_median: 1.38, atr_median: 1.68, dist_in_atr: 0.82,
+                already_broken: 1, within_1atr: 43, n: 72 },
+    gaps: { median_min: 32, under2min: 11, n: 71 },
+  }
+
+  it("normalises the python artifact and sorts trend windows", () => {
+    const e = parseEntryAnalysis(raw)!
+    expect(e.decisions).toBe(72)
+    expect(e.trendAgreement.map((t) => t.window)).toEqual([5, 15, 30])
+    expect(e.features[0].z).toBeCloseTo(7.44, 2)
+    expect(e.pullback.alreadyBroken).toBe(1)
+  })
+
+  it("returns null for junk instead of throwing", () => {
+    expect(parseEntryAnalysis(null)).toBeNull()
+    expect(parseEntryAnalysis({})).toBeNull()
+    expect(parseEntryAnalysis({ features: "nope" })).toBeNull()
+  })
+
+  it("upgrades rule 11 and adds rule 12 once the entry artifact exists", () => {
+    const s = stopStructure(deals)
+    const c = concurrency(deals)
+    const r = riskProfile(deals, 846.63, s.medianRiskUsd, 500)
+    const withEntry = ruleSet(deals, s, c, r, timing(deals), parseEntryAnalysis(raw))
+    expect(withEntry).toHaveLength(12)
+    expect(withEntry[10].confidence).toBe("medium")
+    expect(withEntry[10].rule).toContain("回抽")
+    expect(withEntry[10].evidence).toContain("96%")
+    expect(withEntry[11].evidence).toContain("9/72")
+
+    const without = ruleSet(deals, s, c, r, timing(deals), null)
+    expect(without).toHaveLength(11)
+    expect(without[10].confidence).toBe("unknown")
   })
 })

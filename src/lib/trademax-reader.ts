@@ -19,9 +19,10 @@ import {
   type Deal, type PendingOrder, type Performance, type EquityCurve,
   type DayStat, type Bucket, type StopStructure, type TimingStats,
   type ConcurrencyCheck, type RiskProfile, type LiveEvent, type Rule,
-  type AccountBar, type OpenPosition,
+  type AccountBar, type OpenPosition, type EntryAnalysis,
   parseTradesCsv, performance, equityCurve, byDay, exitBuckets, stopStructure,
   timing, concurrency, riskProfile, parseLiveFeed, ruleSet, parseAccountBar,
+  parseEntryAnalysis,
 } from "./trademax-pure"
 
 const DATA_DIR = process.env.TRADEMAX_DATA_DIR || "/data/trademax-observer"
@@ -75,6 +76,7 @@ export interface TradeMaxSnapshot {
   risk: RiskProfile
   rules: Rule[]
   live: LiveEvent[]
+  entry: EntryAnalysis | null
 }
 
 async function readText(file: string): Promise<string | null> {
@@ -123,6 +125,7 @@ function emptySnapshot(error: string): TradeMaxSnapshot {
     risk: riskProfile([], 0, null),
     rules: [],
     live: [],
+    entry: null,
   }
 }
 
@@ -139,6 +142,7 @@ export async function readTradeMaxSnapshot(): Promise<TradeMaxSnapshot> {
     heartbeat?: string; polls?: number; account?: string | null; open_rows?: number
   }>("data/watch.status")
   const liveText = await readText("data/live.jsonl")
+  const entry = parseEntryAnalysis(await readJson("data/entry-analysis.json"))
 
   const depositOp = accountMeta?.balance_ops?.[0] ?? null
   const deposit = accountMeta?.summary?.deposit
@@ -194,8 +198,9 @@ export async function readTradeMaxSnapshot(): Promise<TradeMaxSnapshot> {
     timing: tm,
     concurrency: conc,
     risk,
-    rules: ruleSet(deals, stops, conc, risk, tm),
+    rules: ruleSet(deals, stops, conc, risk, tm, entry),
     live,
+    entry,
   }
 }
 
