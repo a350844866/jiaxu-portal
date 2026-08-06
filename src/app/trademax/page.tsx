@@ -8,8 +8,11 @@ import { AutoRefresh } from "@/components/dashboard/trademax/auto-refresh"
 
 export const dynamic = "force-dynamic"
 
-export default async function TradeMaxPage() {
-  const s = await readTradeMaxSnapshot()
+export default async function TradeMaxPage(
+  { searchParams }: { searchParams: Promise<{ account?: string }> },
+) {
+  const { account } = await searchParams
+  const s = await readTradeMaxSnapshot(account)
 
   if (!s.ok) {
     return (
@@ -37,16 +40,28 @@ export default async function TradeMaxPage() {
 
       <header className="space-y-2">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <h1 className="text-xl font-bold text-zinc-50">黄金「量化」观摩号</h1>
+          <h1 className="text-xl font-bold text-zinc-50">{s.label}</h1>
           <span className="text-xs text-zinc-500">
-            trademax-observer · 只读观察 + 策略反推
+            {s.account.login} @ {s.account.server} · 只读观察 + 策略反推
+          </span>
+          <span className="flex gap-1">
+            {s.accounts.map((a) => (
+              <Link key={a.slug} href={`/trademax?account=${a.slug}`}
+                    className={
+                      a.slug === s.slug
+                        ? "rounded-full border border-amber-500/50 bg-amber-500/15 px-2.5 py-0.5 text-[11px] text-amber-200"
+                        : "rounded-full border border-zinc-700 px-2.5 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200"
+                    }>
+                {a.label}
+              </Link>
+            ))}
           </span>
           <AutoRefresh seconds={15} />
           <Link href="/" className="ml-auto text-xs text-zinc-500 hover:text-zinc-300">← 返回首页</Link>
         </div>
         <p className="max-w-4xl text-sm leading-6 text-zinc-400">
-          别人给的 MT4 <span className="text-zinc-200">观摩（investor，只读）</span>账号，用来验证他那套
-          「#MT4黄金一次一单」到底是什么。EA 本体看不到（它跑在对方终端上），所以这里做的是
+          别人给的 MT4 只读观察账号，用来验证他卖的那套东西到底是什么。
+          EA 本体看不到（它跑在对方终端上），所以这里做的是
           <span className="text-zinc-200">从订单行为反推规则</span>——并且把样本量和风险摆在和收益率同样显眼的位置。
         </p>
       </header>

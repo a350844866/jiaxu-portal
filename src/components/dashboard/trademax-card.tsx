@@ -34,7 +34,7 @@ function Stat({ n, label, tone }: { n: string; label: string; tone?: string }) {
   )
 }
 
-export function TradeMaxCard() {
+export function TradeMaxCard({ account = "trademax" }: { account?: string } = {}) {
   const [data, setData] = useState<TradeMaxCardData | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -43,7 +43,7 @@ export function TradeMaxCard() {
     setLoading(true)
     setErr(null)
     try {
-      const res = await fetch("/api/trademax", { cache: "no-store" })
+      const res = await fetch(`/api/trademax?account=${account}`, { cache: "no-store" })
       const body = await res.json()
       if (!res.ok || body.ok === false) setErr(body.error ?? "trademax 状态读取失败")
       else setData(body)
@@ -52,7 +52,7 @@ export function TradeMaxCard() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [account])
 
   useEffect(() => {
     load()
@@ -66,7 +66,7 @@ export function TradeMaxCard() {
     <section className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Coins className="h-4 w-4 text-amber-400" />
-        <h2 className="text-sm font-semibold text-zinc-200">黄金&quot;量化&quot;观摩号</h2>
+        <h2 className="text-sm font-semibold text-zinc-200">{data?.label ?? "量化观摩号"}</h2>
         {data && (
           <span className={cn(
             "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px]",
@@ -86,7 +86,7 @@ export function TradeMaxCard() {
         <button onClick={load} className="ml-auto text-zinc-600 transition hover:text-zinc-300" aria-label="刷新">
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
         </button>
-        <Link href="/trademax" className="inline-flex items-center gap-1 text-[11px] text-zinc-500 hover:text-zinc-300">
+        <Link href={`/trademax?account=${account}`} className="inline-flex items-center gap-1 text-[11px] text-zinc-500 hover:text-zinc-300">
           反推看板 <ArrowRight className="h-3 w-3" />
         </Link>
       </div>

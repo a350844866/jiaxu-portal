@@ -9,9 +9,10 @@ export const revalidate = 0
  * requests. No explicit session guard — the global proxy.ts middleware gates
  * every non-public path, same treatment as /api/pm-paper.
  */
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const data = await readTradeMaxCard()
+    const slug = new URL(req.url).searchParams.get("account") ?? undefined
+    const data = await readTradeMaxCard(slug)
     return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } })
   } catch (err) {
     console.error("[api/trademax]", err)

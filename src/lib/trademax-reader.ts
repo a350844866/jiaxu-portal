@@ -25,9 +25,38 @@ import {
   parseEntryAnalysis,
 } from "./trademax-pure"
 
-const DATA_DIR = process.env.TRADEMAX_DATA_DIR || "/data/trademax-observer"
+const BASE_DIR = process.env.TRADEMAX_DATA_DIR || "/data/trademax-observer"
 /** watcher polls every 10s; 5 min of silence means the session is gone */
 const STALE_AFTER_SEC = 300
+
+/** Observed accounts. Each watcher writes into its own subdirectory. */
+export interface AccountDef {
+  slug: string
+  label: string
+  login: string
+  server: string
+  broker: string
+  /** path under BASE_DIR holding trades.csv / live.jsonl / watch.status */
+  dir: string
+  note: string
+}
+
+export const ACCOUNTS: AccountDef[] = [
+  {
+    slug: "trademax", label: "黄金一次一单", login: "6176972",
+    server: "TradeMaxGlobal-Live6", broker: "TradeMax Global Limited (TMGM)",
+    dir: "data", note: "观摩(只读)密码",
+  },
+  {
+    slug: "dls", label: "MT4趋势一次一单", login: "260276",
+    server: "DLSMarkets-Live", broker: "DLS Markets Limited",
+    dir: "data/dls", note: "⚠ 疑似主密码(可下单)，观察栈只读",
+  },
+]
+
+export function accountBySlug(slug: string | undefined): AccountDef {
+  return ACCOUNTS.find((a) => a.slug === slug) ?? ACCOUNTS[0]
+}
 
 export interface BalanceOp {
   ticket: string
@@ -49,6 +78,9 @@ export interface WatchStatus {
 export interface TradeMaxSnapshot {
   ok: boolean
   error: string | null
+  slug: string
+  label: string
+  accounts: { slug: string; label: string }[]
   account: {
     login: string
     server: string
@@ -79,16 +111,16 @@ export interface TradeMaxSnapshot {
   entry: EntryAnalysis | null
 }
 
-async function readText(file: string): Promise<string | null> {
+async function readText(acct: AccountDef, file: string): Promise<string | null> {
   try {
-    return await fs.readFile(path.join(DATA_DIR, file), "utf8")
+    return await fs.readFile(path.join(BASE_DIR, acct.dir, file), "utf8")
   } catch {
     return null
   }
 }
 
-async function readJson<T>(file: string): Promise<T | null> {
-  const t = await readText(file)
+async function readJson<T>(acct: AccountDef, file: string): Promise<T | null> {
+  const t = await readText(acct, file)
   if (!t) return null
   try {
     return JSON.parse(t) as T
@@ -97,16 +129,19 @@ async function readJson<T>(file: string): Promise<T | null> {
   }
 }
 
-function emptySnapshot(error: string): TradeMaxSnapshot {
+function emptySnapshot(error: string, acct: AccountDef): TradeMaxSnapshot {
   const empty = parseTradesCsv("")
   const stops = stopStructure([])
   return {
     ok: false,
     error,
+    slug: acct.slug,
+    label: acct.label,
+    accounts: ACCOUNTS.map((a) => ({ slug: a.slug, label: a.label })),
     account: {
-      login: process.env.TRADEMAX_LOGIN || "6176972",
-      server: process.env.TRADEMAX_SERVER || "TradeMaxGlobal-Live6",
-      broker: "TradeMax Global Limited (TMGM)",
+      login: acct.login,
+      server: acct.server,
+      broker: acct.broker,
       deposit: 0, balance: null, equity: null, netPnl: 0, returnPct: null,
       fundedBy: null, firstDeal: null, lastDeal: null,
     },
@@ -122,27 +157,28 @@ function emptySnapshot(error: string): TradeMaxSnapshot {
     stops,
     timing: timing([]),
     concurrency: concurrency([]),
-    risk: riskProfile([], 0, null),
+    risk: riskProfile([], 0, null, 0),
     rules: [],
     live: [],
     entry: null,
   }
 }
 
-export async function readTradeMaxSnapshot(): Promise<TradeMaxSnapshot> {
-  const csv = await readText("data/trades.csv")
-  if (!csv) return emptySnapshot("trades.csv 不可读——观察栈可能没在跑或挂载缺失")
+export async function readTradeMaxSnapshot(slug?: string): Promise<TradeMaxSnapshot> {
+  const acct = accountBySlug(slug)
+  const csv = await readText(acct, "trades.csv")
+  if (!csv) return emptySnapshot("trades.csv 不可读——观察栈可能没在跑或挂载缺失", acct)
 
   const { deals, pending } = parseTradesCsv(csv)
   const accountMeta = await readJson<{
     balance_ops?: BalanceOp[]
     summary?: { deposit?: number; profit_loss?: number; withdrawal?: number }
-  }>("data/account.json")
+  }>(acct, "account.json")
   const status = await readJson<{
     heartbeat?: string; polls?: number; account?: string | null; open_rows?: number
-  }>("data/watch.status")
-  const liveText = await readText("data/live.jsonl")
-  const entry = parseEntryAnalysis(await readJson("data/entry-analysis.json"))
+  }>(acct, "watch.status")
+  const liveText = await readText(acct, "live.jsonl")
+  const entry = parseEntryAnalysis(await readJson(acct, "entry-analysis.json"))
 
   const depositOp = accountMeta?.balance_ops?.[0] ?? null
   const deposit = accountMeta?.summary?.deposit
@@ -166,10 +202,13 @@ export async function readTradeMaxSnapshot(): Promise<TradeMaxSnapshot> {
   return {
     ok: true,
     error: null,
+    slug: acct.slug,
+    label: acct.label,
+    accounts: ACCOUNTS.map((a) => ({ slug: a.slug, label: a.label })),
     account: {
-      login: process.env.TRADEMAX_LOGIN || "6176972",
-      server: process.env.TRADEMAX_SERVER || "TradeMaxGlobal-Live6",
-      broker: "TradeMax Global Limited (TMGM)",
+      login: acct.login,
+      server: acct.server,
+      broker: acct.broker,
       deposit,
       balance,
       equity: bar.equity,
@@ -206,6 +245,8 @@ export async function readTradeMaxSnapshot(): Promise<TradeMaxSnapshot> {
 
 /** Compact payload for the home-page card — no per-deal rows. */
 export interface TradeMaxCardData {
+  slug: string
+  label: string
   ok: boolean
   error: string | null
   balance: number | null
@@ -223,9 +264,11 @@ export interface TradeMaxCardData {
   lastNote: string | null
 }
 
-export async function readTradeMaxCard(): Promise<TradeMaxCardData> {
-  const s = await readTradeMaxSnapshot()
+export async function readTradeMaxCard(slug?: string): Promise<TradeMaxCardData> {
+  const s = await readTradeMaxSnapshot(slug)
   return {
+    slug: s.slug,
+    label: s.label,
     ok: s.ok,
     error: s.error,
     balance: s.account.balance,

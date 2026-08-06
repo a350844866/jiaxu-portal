@@ -253,6 +253,19 @@ describe("riskProfile", () => {
 })
 
 describe("parseAccountBar", () => {
+  it("survives space-grouped thousands — DLSMarkets prints 3 234.60", () => {
+    const bar = parseAccountBar(
+      "Balance: 3 234.60 USD\u00a0\u00a0Equity: 3 234.60\u00a0\u00a0Free margin: 3 234.60")
+    expect(bar).toEqual({ balance: 3234.6, equity: 3234.6, freeMargin: 3234.6 })
+  })
+
+  it("handles comma grouping and negatives too", () => {
+    const bar = parseAccountBar("Balance: 12,345.67 USD  Equity: -1,000.50  Free margin: 0.00")
+    expect(bar.balance).toBeCloseTo(12345.67, 2)
+    expect(bar.equity).toBeCloseTo(-1000.5, 2)
+    expect(bar.freeMargin).toBe(0)
+  })
+
   it("reads the MT4 status line including nbsp separators", () => {
     const bar = parseAccountBar("Balance: 846.63 USD  Equity: 850.00  Free margin: 800.10")
     expect(bar).toEqual({ balance: 846.63, equity: 850, freeMargin: 800.1 })

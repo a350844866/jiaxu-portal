@@ -574,10 +574,13 @@ export interface LiveEvent {
 }
 
 export function parseAccountBar(cell: string): AccountBar {
-  const clean = cell.replace(/ /g, " ")
+  // MT4 groups thousands with a SPACE on some servers ("3 234.60") and a comma
+  // on others. Both, plus nbsp, have to survive — reading "3 234.60" as 3
+  // silently turns a $3k account into a $3 one (DLSMarkets does exactly this).
+  const clean = cell.replace(/\u00a0/g, " ")
   const grab = (label: string) => {
-    const m = new RegExp(`${label}:\\s*([-0-9.,]+)`).exec(clean)
-    return m ? Number(m[1].replace(/,/g, "")) : null
+    const m = new RegExp(`${label}:\\s*(-?[0-9][0-9 ,]*(?:\\.[0-9]+)?)`).exec(clean)
+    return m ? Number(m[1].replace(/[ ,]/g, "")) : null
   }
   return { balance: grab("Balance"), equity: grab("Equity"), freeMargin: grab("Free margin") }
 }
