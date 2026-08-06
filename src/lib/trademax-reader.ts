@@ -52,6 +52,12 @@ export const ACCOUNTS: AccountDef[] = [
     server: "DLSMarkets-Live", broker: "DLS Markets Limited",
     dir: "data/dls", note: "⚠ 疑似主密码(可下单)，观察栈只读",
   },
+  {
+    slug: "grand", label: "多指标共振网格", login: "10633750",
+    server: "GrandMarkets-Live1", broker: "Grand Markets Limited",
+    dir: "data/grand",
+    note: "⚠ 疑似主密码；5478 笔全量由券商客户端导出（网页版封顶 1000）",
+  },
 ]
 
 export function accountBySlug(slug: string | undefined): AccountDef {

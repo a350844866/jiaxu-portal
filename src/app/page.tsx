@@ -40,6 +40,7 @@ export default async function Home() {
       <PmScalpCard />
       <TradeMaxCard account="trademax" />
       <TradeMaxCard account="dls" />
+      <TradeMaxCard account="grand" />
       <ServiceGrid services={services} initialHealth={health} />
       <footer className="mt-12 text-center text-xs text-zinc-600">
         jiaxu-server-home
