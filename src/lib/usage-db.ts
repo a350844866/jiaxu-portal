@@ -71,7 +71,7 @@ function codexWeeklyResetUtc(): Date {
   return new Date(anchor.getTime() + weeksPassed * weekMs)
 }
 
-export type SystemName = "mt4" | "ibkr" | "quant-flow" | "auto-content" | "pm-paper" | "interactive" | "other" | "mbp"
+export type SystemName = "mt4" | "ibkr" | "quant-flow" | "auto-content" | "pm-paper" | "worker-pool-other" | "interactive" | "other" | "mbp"
 
 export interface SystemSummary {
   system: SystemName
@@ -108,7 +108,9 @@ export interface UsageLive {
   }
 }
 
-const ALL_SYSTEMS: SystemName[] = ["mt4", "ibkr", "quant-flow", "auto-content", "pm-paper", "interactive", "other"]
+// 必须与 watcher.py::classify_system 的返回值集合保持一致——白名单外的桶名会掉进
+// 下面 getUsageLive 的 other 兜底（计入 totals 但没有 tile），别再让它整桶蒸发。
+const ALL_SYSTEMS: SystemName[] = ["mt4", "ibkr", "quant-flow", "auto-content", "pm-paper", "worker-pool-other", "interactive", "other"]
 
 interface QuantFlowTracerEntry {
   ts: number
@@ -255,10 +257,31 @@ function summarizeQuantFlowTracer(entries: QuantFlowTracerEntry[]): BucketUsageS
   return acc
 }
 
-/** 把某个 host 的多 system_name 行聚合成单个 SystemSummary（用于 MBP 卡）。*/
-function buildHostSummary(rows: mysql.RowDataPacket[], host: SystemName): SystemSummary {
-  const acc: SystemSummary = {
-    system: host,
+/** 把一行 GROUP BY 结果累加进桶；today_total_tokens 由调用方最后统一重算。*/
+function accumulateRow(acc: SystemSummary, r: mysql.RowDataPacket): void {
+  acc.today_input += toNumber(r.today_input)
+  acc.today_output += toNumber(r.today_output)
+  acc.today_cache_read += toNumber(r.today_cache_read)
+  acc.today_cache_create += toNumber(r.today_cache_create)
+  acc.today_cost_usd += toNumber(r.today_cost_usd)
+  acc.month_cost_usd += toNumber(r.month_cost_usd)
+  acc.month_total_tokens += toNumber(r.month_total_tokens)
+  acc.last1h_cost_usd += toNumber(r.last1h_cost_usd)
+  acc.last1h_total_tokens += toNumber(r.last1h_total_tokens)
+  const ts = r.last_event_ts
+    ? new Date(r.last_event_ts as string | Date).toISOString()
+    : null
+  if (ts && (!acc.last_event_ts || ts > acc.last_event_ts)) acc.last_event_ts = ts
+}
+
+function recomputeTodayTotal(acc: SystemSummary): void {
+  acc.today_total_tokens =
+    acc.today_input + acc.today_output + acc.today_cache_read + acc.today_cache_create
+}
+
+function emptySummary(system: SystemName): SystemSummary {
+  return {
+    system,
     today_input: 0,
     today_output: 0,
     today_cache_read: 0,
@@ -271,30 +294,55 @@ function buildHostSummary(rows: mysql.RowDataPacket[], host: SystemName): System
     last1h_total_tokens: 0,
     last_event_ts: null,
   }
-  for (const r of rows) {
-    acc.today_input += toNumber(r.today_input)
-    acc.today_output += toNumber(r.today_output)
-    acc.today_cache_read += toNumber(r.today_cache_read)
-    acc.today_cache_create += toNumber(r.today_cache_create)
-    acc.today_cost_usd += toNumber(r.today_cost_usd)
-    acc.month_cost_usd += toNumber(r.month_cost_usd)
-    acc.month_total_tokens += toNumber(r.month_total_tokens)
-    acc.last1h_cost_usd += toNumber(r.last1h_cost_usd)
-    acc.last1h_total_tokens += toNumber(r.last1h_total_tokens)
-    const ts = r.last_event_ts
-      ? new Date(r.last_event_ts as string | Date).toISOString()
-      : null
-    if (ts && (!acc.last_event_ts || ts > acc.last_event_ts)) acc.last_event_ts = ts
-  }
-  acc.today_total_tokens =
-    acc.today_input + acc.today_output + acc.today_cache_read + acc.today_cache_create
+}
+
+/** 把某个 host 的多 system_name 行聚合成单个 SystemSummary（用于 MBP 卡）。*/
+function buildHostSummary(rows: mysql.RowDataPacket[], host: SystemName): SystemSummary {
+  const acc = emptySummary(host)
+  for (const r of rows) accumulateRow(acc, r)
+  recomputeTodayTotal(acc)
   return acc
+}
+
+/**
+ * home 侧分区完备：白名单（ALL_SYSTEMS）外的 system_name 折进 other，而不是静默蒸发。
+ * MBP 侧 2026-06-03 就有这个保证（buildHostSummary 吃掉所有非 home 行），home 侧一直漏。
+ *
+ * 2026-08-06 实证：watcher 2026-05-18 起就在产 worker-pool-other 桶，portal 的
+ * ALL_SYSTEMS.map() 从没认过它，8 月日均 $28 从 totals 里消失，页面表现为
+ * 「今日合计 $118」比「Claude 池 我 $146」少一截（后者是不过滤的全库 SUM）。
+ *
+ * 导出仅为单测用（见 __tests__/usage-live-partition.test.ts）。
+ */
+export function foldUnknownHomeRows(
+  systems: SystemSummary[],
+  homeRows: mysql.RowDataPacket[],
+): void {
+  let otherBucket = systems.find((x) => x.system === "other")
+  if (!otherBucket) {
+    // ALL_SYSTEMS 目前必含 other，但不靠这个不变量吃非空断言：真被人删掉时
+    // 应当是「多一个兜底桶」而不是整个 getUsageLive 抛错。
+    otherBucket = emptySummary("other")
+    systems.push(otherBucket)
+  }
+  const known = new Set<string>(ALL_SYSTEMS)
+  let folded = false
+  for (const r of homeRows) {
+    if (known.has(String(r.system_name))) continue
+    accumulateRow(otherBucket, r)
+    folded = true
+  }
+  if (folded) recomputeTodayTotal(otherBucket)
 }
 
 export async function getUsageLive(): Promise<UsageLive> {
   const p = getPool()
   const todayUtc = beijingTodayUtc().toISOString().slice(0, 19).replace("T", " ")
   const monthUtc = beijingMonthStartUtc().toISOString().slice(0, 19).replace("T", " ")
+  // 分桶查询与下面的 Claude 池查询共用同一个时间上界：两条 SQL 之间有 await（Codex
+  // sqlite / tracer 文件读），期间 watcher 新落地的事件只会进后查的那条，页面上就是
+  // 「今日合计」与「Claude 池」差几分钱。取同一快照上界后两边严格对账。
+  const asOfUtc = new Date().toISOString().slice(0, 23).replace("T", " ")
   const [rows] = await p.query<mysql.RowDataPacket[]>(
     `
     SELECT
@@ -315,11 +363,11 @@ export async function getUsageLive(): Promise<UsageLive> {
                ELSE 0 END) AS last1h_total_tokens,
       MAX(ts) AS last_event_ts
     FROM usage_events
-    WHERE ts >= LEAST(?, UTC_TIMESTAMP() - INTERVAL 1 HOUR)
+    WHERE ts >= LEAST(?, UTC_TIMESTAMP() - INTERVAL 1 HOUR) AND ts < ?
     GROUP BY system_name, host
     `,
-    // placeholders: today_input, today_output, today_cache_read, today_cache_create, today_cost_usd, month_cost_usd, month_total_tokens, WHERE
-    [todayUtc, todayUtc, todayUtc, todayUtc, todayUtc, monthUtc, monthUtc, monthUtc],
+    // placeholders: today_input, today_output, today_cache_read, today_cache_create, today_cost_usd, month_cost_usd, month_total_tokens, WHERE 下界, WHERE 上界
+    [todayUtc, todayUtc, todayUtc, todayUtc, todayUtc, monthUtc, monthUtc, monthUtc, asOfUtc],
   )
 
   // 分区必须完备：home 一桶，其余全部归 MBP 桶（目前 mbp 是唯一远端 root，
@@ -353,6 +401,8 @@ export async function getUsageLive(): Promise<UsageLive> {
         : null,
     }
   })
+
+  foldUnknownHomeRows(systems, homeRows)
 
   // quant-flow 桶三源合并：
   //   (1) MySQL usage_events：claude-usage watcher 按 cwd=/app 归类的 Claude Code headless 调用
@@ -395,13 +445,14 @@ export async function getUsageLive(): Promise<UsageLive> {
   // 与 lzz 面板 cost-snapshot.sh 完全一致；分母不掺 Codex/$200 池、deepseek/qwen 等
   // 别的计费池(展志只用 Claude，混入会稀释他的占比)。单查询原子取 claude 总量 + zz
   // 切片，避免「先查总量再查 zz」两步之间有新事件落地导致 mine 短暂为负 / pct >100。
+  // 上界 asOfUtc 与上面分桶查询同一快照，保证 mine + zz 恒等于 totals 的 usage_events 部分。
   const [zzRows] = await p.query<mysql.RowDataPacket[]>(
     `SELECT
        COALESCE(SUM(cost_usd), 0) AS claude_total,
        COALESCE(SUM(IF(project = '/home/jiaxu/zz-claude' OR project LIKE '/home/jiaxu/zz-claude/%', cost_usd, 0)), 0) AS zz_cost
      FROM usage_events
-     WHERE ts >= ?`,
-    [todayUtc],
+     WHERE ts >= ? AND ts < ?`,
+    [todayUtc, asOfUtc],
   )
   const claudeTotal = toNumber(zzRows[0]?.claude_total)
   const zzCost = toNumber(zzRows[0]?.zz_cost)
@@ -413,7 +464,8 @@ export async function getUsageLive(): Promise<UsageLive> {
     pct_mine_of_total: claudeTotal > 0 ? Math.round((mineCost / claudeTotal) * 1000) / 10 : null,
   }
 
-  return { as_of: new Date().toISOString(), systems, totals, zhanzhi }
+  // as_of = 快照上界本身，不是响应返回时刻（后者会晚于数据截止点）
+  return { as_of: asOfUtc.replace(" ", "T") + "Z", systems, totals, zhanzhi }
 }
 
 export interface BreakdownPoint {

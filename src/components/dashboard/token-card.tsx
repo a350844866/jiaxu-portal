@@ -1,10 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Activity, Bot, FileText, Laptop, LineChart, MessageSquare, TrendingUp, Vote } from "lucide-react"
+import { Activity, Bot, Boxes, FileText, Laptop, LineChart, MessageSquare, TrendingUp, Vote } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-type SystemName = "mt4" | "ibkr" | "quant-flow" | "auto-content" | "pm-paper" | "interactive" | "other" | "mbp"
+type SystemName = "mt4" | "ibkr" | "quant-flow" | "auto-content" | "pm-paper" | "worker-pool-other" | "interactive" | "other" | "mbp"
 
 interface SystemSummary {
   system: SystemName
@@ -45,13 +45,16 @@ const LABELS: Record<SystemName, { name: string; icon: typeof Bot; tone: string 
   "quant-flow":   { name: "quant-flow",     icon: TrendingUp,    tone: "from-violet-500/15 to-violet-500/0 border-violet-500/25" },
   "auto-content": { name: "auto-content",   icon: FileText,      tone: "from-orange-500/15 to-orange-500/0 border-orange-500/25" },
   "pm-paper":     { name: "pm-paper 模拟盘", icon: Vote,          tone: "from-teal-500/15 to-teal-500/0 border-teal-500/25"       },
+  "worker-pool-other": { name: "worker-pool 跑批", icon: Boxes,   tone: "from-cyan-500/15 to-cyan-500/0 border-cyan-500/25"      },
   interactive:    { name: "Interactive",    icon: MessageSquare, tone: "from-emerald-500/15 to-emerald-500/0 border-emerald-500/25" },
   mbp:            { name: "MBP (公司)",     icon: Laptop,        tone: "from-rose-500/15 to-rose-500/0 border-rose-500/25"      },
   other:          { name: "其他",            icon: Activity,      tone: "from-zinc-500/15 to-zinc-500/0 border-zinc-500/25"     },
 }
 
 // mt4 / ibkr 已停运下线 (2026-06-09),从消耗卡移除其 tile;如恢复交易把 "mt4"/"ibkr" 加回即可
-const VISIBLE: SystemName[] = ["quant-flow", "auto-content", "pm-paper", "interactive", "mbp"]
+// worker-pool 跑批 (cwd=/tmp/worker-pool 的 ephemeral session) 2026-08-06 补 tile:
+// 它 2026-05-18 就在入库,但一直不在 VISIBLE 也不在 ALL_SYSTEMS,整桶不计入合计
+const VISIBLE: SystemName[] = ["quant-flow", "auto-content", "worker-pool-other", "pm-paper", "interactive", "mbp"]
 
 function fmtTokens(n: number): string {
   if (n >= 1e9) return (n / 1e9).toFixed(2) + "B"
