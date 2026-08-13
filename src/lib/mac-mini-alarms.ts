@@ -45,6 +45,13 @@ const R0_TICKS = 2 // 持续 2-3 tick
 
 const ROUTER_MDEV_OK = 5
 const ROUTER_LOSS_OK = 0
+/**
+ * routerDegraded 的连续 tick 门槛(2026-08-13 加,与 R1_TICKS 对齐)。
+ * 此前 routerDegraded 是**唯一没有去抖**的判定——R0/R1/R2/R3 全都要求连续
+ * 2~12 个 tick,只有它按单个 sample 直接翻,且翻转即单发 TG。
+ * 配合 pingHost 的"任何异常都返回 loss=100"兜底,一次瞬时探针失败就能推一条告警。
+ */
+const ROUTER_DEGRADED_TICKS = 3
 
 export interface AlarmIncident {
   rule: RuleId
@@ -200,10 +207,24 @@ function checkR4(
 }
 
 function isRouterDegraded(sample: MacMetricsSample): boolean {
+  // 探针没跑成时 loss=100 是兜底占位值不是实测值,据此判"路由器异常"就是伪造事实
+  if (sample.ping_router.probeError) return false
   return (
     sample.ping_router.loss > ROUTER_LOSS_OK ||
     (sample.ping_router.mdev !== null && sample.ping_router.mdev > ROUTER_MDEV_OK)
   )
+}
+
+/**
+ * routerDegraded 去抖:连续 ROUTER_DEGRADED_TICKS 次判定异常才置真;
+ * 只要出现一次正常样本立刻复位(在告警方向上保守 —— 宁可晚报不可错报)。
+ * 样本数不足门槛时沿用上一次状态,避免刚启动就抖。
+ */
+function checkRouterDegraded(history: MacMetricsSample[], wasDegraded: boolean): boolean {
+  if (history.length === 0) return wasDegraded
+  if (!isRouterDegraded(history[history.length - 1])) return false
+  if (history.length < ROUTER_DEGRADED_TICKS) return wasDegraded
+  return history.slice(-ROUTER_DEGRADED_TICKS).every(isRouterDegraded)
 }
 
 function formatTgMessage(
@@ -314,9 +335,9 @@ export function runAlarmTick(
     next.lastUptimeSec = sample.mac_uptime_sec
   }
 
-  // Router degraded 状态
+  // Router degraded 状态(2026-08-13 起走去抖,不再单 sample 直翻)
   const wasRouterDegraded = next.routerDegraded
-  next.routerDegraded = isRouterDegraded(sample)
+  next.routerDegraded = checkRouterDegraded(history, wasRouterDegraded)
 
   // 跑规则 (注意抑制顺序)
   const r0 = checkR0(history)

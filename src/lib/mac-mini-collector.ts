@@ -24,6 +24,13 @@ export interface PingResult {
   max: number | null
   mdev: number | null
   loss: number // 0-100
+  /**
+   * true = ping 探针本身没跑成(超时 / tick deadline abort / spawn 失败 / 输出无法解析),
+   * 此时 loss=100 是兜底占位值,**不是实测结果**。
+   * 2026-08-13 加:此前探针失败与"真的 100% 丢包"不可区分,一次瞬时执行失败
+   * 就会被当成网络故障证据推 TG 告警(两个目标同时 100% + avg/mdev 全 null 即其指纹)。
+   */
+  probeError?: boolean
 }
 
 export interface ProcInfo {
@@ -106,6 +113,9 @@ function parsePing(stdout: string): PingResult {
   }
   const lossMatch = stdout.match(/(\d+)% packet loss/)
   if (lossMatch) result.loss = parseInt(lossMatch[1], 10)
+  // 连 loss 行都没解析出来 = 输出形态异常(busybox/locale/被截断),loss 仍是兜底 100,
+  // 标 probeError 让告警侧不要把它当实测证据
+  else result.probeError = true
   return result
 }
 
@@ -117,7 +127,10 @@ async function pingHost(host: string, signal: AbortSignal): Promise<PingResult> 
     })
     return parsePing(stdout)
   } catch {
-    return { avg: null, max: null, mdev: null, loss: 100 }
+    // 探针没跑成 ≠ 网络 100% 丢包。
+    // 注意 collectSample 里三路(两个 ping + ssh)共用同一个 10s AbortController,
+    // 任一路拖到死线会把两个 ping 一起 abort → 两个目标同时"100% 丢包"。
+    return { avg: null, max: null, mdev: null, loss: 100, probeError: true }
   }
 }
 

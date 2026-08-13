@@ -63,13 +63,21 @@ describe("R0_mac_unreachable", () => {
   })
 
   it("ssh_ok=false 但 router 也 down → R0 不触发 (degraded 状态)", () => {
-    const samples = [
-      makeSample({ ssh_ok: false, ping_router: { avg: null, max: null, mdev: null, loss: 100 } }),
-      makeSample({ ssh_ok: false, ping_router: { avg: null, max: null, mdev: null, loss: 100 } }),
-    ]
-    const { state } = feedSamples(samples)
-    expect(state.activeAlarms.has("R0_mac_unreachable")).toBe(false)
-    expect(state.routerDegraded).toBe(true)
+    // 注意 loss=100 且**不带 probeError** = 实测到的路由器全丢包(真死),
+    // 与探针没跑成的兜底 100 是两回事,后者见 "routerDegraded 去抖与探针失败区分"
+    const down = () =>
+      makeSample({ ssh_ok: false, ping_router: { avg: null, max: null, mdev: null, loss: 100 } })
+
+    // R0 抑制在 2 tick 即成立(routerOk=false),这是本用例的主断言
+    const two = feedSamples([down(), down()])
+    expect(two.state.activeAlarms.has("R0_mac_unreachable")).toBe(false)
+    // 2026-08-13 契约变更:routerDegraded 改为需连续 ROUTER_DEGRADED_TICKS(3) 次才置真,
+    // 原断言按"单 tick 直翻"写,此处按新契约改写而非删除
+    expect(two.state.routerDegraded).toBe(false)
+
+    const three = feedSamples([down(), down(), down()])
+    expect(three.state.activeAlarms.has("R0_mac_unreachable")).toBe(false)
+    expect(three.state.routerDegraded).toBe(true)
   })
 })
 
@@ -199,5 +207,45 @@ describe("recovery (active → recovered)", () => {
       state = runAlarmTick(s, history, state, DEFAULT_CONFIG).nextState
     }
     expect(state.activeAlarms.has("R1_lan_jitter")).toBe(false)
+  })
+})
+
+describe("routerDegraded 去抖与探针失败区分 (2026-08-13)", () => {
+  it("探针失败(probeError)不算路由器异常 —— loss=100 是兜底值不是实测", () => {
+    // 两个目标同时 probeError:tick deadline abort 的典型指纹
+    const probeFail = () =>
+      makeSample({
+        ping_macmini: { avg: null, max: null, mdev: null, loss: 100, probeError: true },
+        ping_router: { avg: null, max: null, mdev: null, loss: 100, probeError: true },
+      })
+    const { state, allIncidents } = feedSamples([probeFail(), probeFail(), probeFail(), probeFail()])
+    expect(state.routerDegraded).toBe(false)
+    // 不应产生任何 R1_lan_jitter 告警(此前会在第 1 个 tick 就单发一条)
+    expect(allIncidents.flat().filter((i) => i.rule === "R1_lan_jitter")).toHaveLength(0)
+  })
+
+  it("单次真实抖动不再立刻翻 routerDegraded —— 需连续 3 tick", () => {
+    const bad = () => makeSample({ ping_router: { avg: 9, max: 30, mdev: 12, loss: 0 } })
+    const s1 = feedSamples([makeSample(), bad()])
+    expect(s1.state.routerDegraded).toBe(false) // 第 1 次异常:不翻
+
+    const s2 = feedSamples([makeSample(), bad(), bad()])
+    expect(s2.state.routerDegraded).toBe(false) // 第 2 次:仍不翻
+
+    const s3 = feedSamples([makeSample(), bad(), bad(), bad()])
+    expect(s3.state.routerDegraded).toBe(true) // 连续 3 次:才翻
+  })
+
+  it("持续真实异常仍然会报 —— 去抖不等于失能", () => {
+    const bad = () => makeSample({ ping_router: { avg: 9, max: 30, mdev: 12, loss: 0 } })
+    const { allIncidents } = feedSamples([makeSample(), bad(), bad(), bad()])
+    const fired = allIncidents.flat().filter((i) => i.rule === "R1_lan_jitter" && i.transition === "active")
+    expect(fired.length).toBeGreaterThan(0)
+  })
+
+  it("出现一次正常样本立刻复位(告警方向保守)", () => {
+    const bad = () => makeSample({ ping_router: { avg: 9, max: 30, mdev: 12, loss: 0 } })
+    const { state } = feedSamples([bad(), bad(), bad(), makeSample()])
+    expect(state.routerDegraded).toBe(false)
   })
 })
