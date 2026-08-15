@@ -1,9 +1,16 @@
 import { ServiceDefinition, HealthResult } from "@/config/services"
 
+/**
+ * 单个探针超时。内网服务正常都在 600ms 内(实测最慢 plex-manage 558ms),
+ * 2.5s 已是很宽的余量。原值 5s——normal / skipTls 是两个串行窗口,最坏叠成
+ * 10s,真挂一个服务首页就多等这么久(2026-08-15 收紧)。
+ */
+const CHECK_TIMEOUT_MS = 2500
+
 function checkOne(service: ServiceDefinition): Promise<HealthResult> {
   const start = Date.now()
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 5000)
+  const timeout = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS)
 
   return fetch(service.healthUrl, {
     method: "GET",
