@@ -841,6 +841,39 @@ function codexBucketByCwdPrefix(cwdPrefix: string): BucketUsageSummary {
   return acc
 }
 
+/** 大 JSONL 只读头尾两个窗口，不把整个文件搬进内存。
+ * 本月单个 rollout 已到 349MB，全读 + split("\n") 会占住 Node 单线程好几秒——
+ * portal 同时兼做 service-proxy，事件循环一堵，全站请求跟着卡（2026-08-15 定位）。
+ * 窗口边界可能切断某行，调用方按行 JSON.parse + try/catch skip，天然安全。 */
+function readHeadTail(
+  filePath: string,
+  size: number,
+  headBytes: number,
+  tailBytes: number,
+): { head: string; tail: string } {
+  const fd = fs.openSync(filePath, "r")
+  try {
+    const hLen = Math.min(headBytes, size)
+    const hBuf = Buffer.allocUnsafe(hLen)
+    fs.readSync(fd, hBuf, 0, hLen, 0)
+
+    const tStart = Math.max(hLen, size - tailBytes)
+    const tLen = size - tStart
+    let tail = ""
+    if (tLen > 0) {
+      const tBuf = Buffer.allocUnsafe(tLen)
+      fs.readSync(fd, tBuf, 0, tLen, tStart)
+      tail = tBuf.toString("utf-8")
+    }
+    return { head: hBuf.toString("utf-8"), tail }
+  } finally {
+    fs.closeSync(fd)
+  }
+}
+
+/** 超过这个大小才走头尾窗口；以下沿用全读，行为与改造前逐字节一致。 */
+const CODEX_JSONL_BIG_BYTES = 8 * 1024 * 1024
+
 /** Parse the last token_count event + session_meta cwd from a Codex JSONL session file */
 function parseCodexJsonl(sessionsDir: string, thread: { id: string; created_at: number }): CodexSessionTokens | null {
   try {
@@ -856,9 +889,31 @@ function parseCodexJsonl(sessionsDir: string, thread: { id: string; created_at: 
     const files = fs.readdirSync(dayDir).filter((f) => f.includes(thread.id) && f.endsWith(".jsonl"))
     if (files.length === 0) return null
 
-    const content = fs.readFileSync(path.join(dayDir, files[0]), "utf-8")
-    const lines = content.split("\n").filter(Boolean)
+    const filePath = path.join(dayDir, files[0])
+    const size = fs.statSync(filePath).size
 
+    // 大文件先试头尾窗口；窗口里没扫到 token_count 就回退全读——宁可慢也不少算 token。
+    // 唯一语义差异：model 取「最后一个 turn_context」，若它恰好落在头尾窗口之间的中段，
+    // 会退到头部那次的值。token 数不受影响（token_count 是累计值，必在尾部）。
+    if (size > CODEX_JSONL_BIG_BYTES) {
+      const { head, tail } = readHeadTail(filePath, size, 256 * 1024, CODEX_JSONL_BIG_BYTES)
+      const windowed = scanCodexLines([...head.split("\n"), ...tail.split("\n")].filter(Boolean), thread)
+      if (windowed) return windowed
+    }
+
+    const content = fs.readFileSync(filePath, "utf-8")
+    return scanCodexLines(content.split("\n").filter(Boolean), thread)
+  } catch {
+    return null
+  }
+}
+
+/** 按出现顺序扫 JSONL 行：cwd 取 session_meta，model 与 token_count 取最后一次出现。 */
+function scanCodexLines(
+  lines: string[],
+  thread: { id: string; created_at: number },
+): CodexSessionTokens | null {
+  try {
     let model = "unknown"
     let cwd = ""
     let lastUsage: { input_tokens: number; cached_input_tokens: number; output_tokens: number; total_tokens: number } | null = null
