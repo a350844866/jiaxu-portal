@@ -18,7 +18,13 @@ import { N8nCard } from "@/components/dashboard/n8n-card"
 import { ZhihuHotCard } from "@/components/dashboard/zhihu-hot-card"
 import { ClaudeSessionCard } from "@/components/dashboard/claude-session-card"
 
-export const revalidate = 30
+/**
+ * 显式声明动态渲染。数据链路里有 14 处 `cache: "no-store"` fetch(健康探针 +
+ * 各卡片 reader),Next.js 据此本就把本路由判为动态——此前写的 `revalidate = 30`
+ * 从未生效过,只会误导人以为首页有 30s 缓存(2026-08-15 核实)。首屏由 Suspense
+ * 流式兜底,不需要 ISR。
+ */
+export const dynamic = "force-dynamic"
 
 /**
  * 43 个健康探针在这里 await,由外层 Suspense 隔开。
