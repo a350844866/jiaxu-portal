@@ -534,10 +534,14 @@ function getOrCreateClaudeTierUsage(byTier: Map<ClaudeTier, ModelUsage>, tier: C
   return usage
 }
 
-export async function getRateLimitUsage(): Promise<RateLimitData> {
+/**
+ * @param weeklyResetOverride 官方配额帧给出的 7d 窗起点(见 claude-quota-pure.officialWeeklyStartMs);
+ *   传了就用它算"本周", 让卡片上标价折算 $ 与官方 % 同窗; 不传回退硬编码 weeklyResetUtc()
+ */
+export async function getRateLimitUsage(weeklyResetOverride?: Date): Promise<RateLimitData> {
   const p = getPool()
   const todayUtc = beijingTodayUtc().toISOString().slice(0, 19).replace("T", " ")
-  const resetUtc = weeklyResetUtc().toISOString().slice(0, 19).replace("T", " ")
+  const resetUtc = (weeklyResetOverride ?? weeklyResetUtc()).toISOString().slice(0, 19).replace("T", " ")
   const [rows] = await p.query<mysql.RowDataPacket[]>(
     `
     SELECT
