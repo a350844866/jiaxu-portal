@@ -4,6 +4,7 @@ import {
   GLM_FUTURE_SKEW_MS,
   ageLabel,
   beijingDate,
+  fmtCny,
   fmtTokens,
   hostSyncLabel,
   parseGlmSnapshot,
@@ -16,7 +17,7 @@ import {
 // 北京 2026-09-15 15:00
 const NOW = Date.parse("2026-09-15T07:00:00Z")
 
-const bucket = (total: number, msgs = 1) => ({ input: 0, cache_read: total, cache_creation: 0, output: 0, total, msgs })
+const bucket = (total: number, msgs = 1, cny = total / 1e6) => ({ input: 0, cache_read: total, cache_creation: 0, output: 0, total, msgs, cny, unpriced_msgs: 0 })
 
 const SNAP = {
   schema: 1,
@@ -35,7 +36,16 @@ const SNAP = {
     today: { totals: bucket(50), by_model: {}, by_host: {}, by_project: {}, projects_omitted: 0 },
   },
   all_time: { totals: bucket(300, 3) },
-  quota: { status: "unavailable", probed_at: "2026-09-15", detail: "404/401" },
+  quota: { status: "self_hosted", probed_at: "2026-09-15", detail: "部门自部署" },
+  pricing: {
+    currency: "CNY",
+    source: "https://docs.bigmodel.cn/cn/guide/start/pricing",
+    fetched_at: "2026-09-15",
+    basis: "按智谱官方 API 标价折算",
+    rules: "按上下文定档",
+    aliases: { "glm-5-2-260617": "glm-5.2" },
+    unpriced_models: [],
+  },
 }
 
 const parse = (over: Record<string, unknown> = {}, now = NOW) => parseGlmSnapshot(JSON.stringify({ ...SNAP, ...over }), now)
@@ -50,7 +60,9 @@ describe("parseGlmSnapshot", () => {
     expect(r.data.windows.month.totals.total).toBe(300)
     expect(r.data.hosts.map((h) => h.host)).toEqual(["mbp", "yunmai-vm"])
     expect(r.data.dedup.raw_usage_lines).toBe(2306)
-    expect(r.data.quota?.status).toBe("unavailable")
+    expect(r.data.quota?.status).toBe("self_hosted")
+    expect(r.data.windows.month.totals.cny).toBeCloseTo(0.0003)
+    expect(r.data.pricing?.aliases).toEqual({ "glm-5-2-260617": "glm-5.2" })
   })
 
   it("陈旧: 超 15min 仍渲染数据但标 stale", () => {
@@ -108,8 +120,30 @@ describe("parseGlmSnapshot", () => {
       },
     })
     if (!r.ok) throw new Error(r.error)
-    expect(r.data.windows.month.totals).toEqual({ input: 0, cache_read: 0, cache_creation: 0, output: 3, total: 3, msgs: 1 })
+    expect(r.data.windows.month.totals).toEqual({ input: 0, cache_read: 0, cache_creation: 0, output: 3, total: 3, msgs: 1, cny: null, unpriced_msgs: 0 })
     expect(r.data.windows.month.by_model).toEqual({})
+  })
+
+  it("价目段: 非 https 来源丢弃; 缺价目段 → pricing=null 不显示金额; 负金额 → null", () => {
+    const r = parse({ pricing: { ...SNAP.pricing, source: "javascript:alert(1)", unpriced_models: ["mystery", 42] } })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.data.pricing?.source).toBeNull()
+    for (const bad of ["https://evil.example/?next=docs.bigmodel.cn", "https://bigmodel.cn.evil.example/p", "https://u:p@docs.bigmodel.cn/", "http://docs.bigmodel.cn/"]) {
+      const x = parse({ pricing: { ...SNAP.pricing, source: bad } })
+      expect(x.ok && x.data.pricing?.source).toBeNull()
+    }
+    const good = parse()
+    expect(good.ok && good.data.pricing?.source).toBe("https://docs.bigmodel.cn/cn/guide/start/pricing")
+    expect(r.data.pricing?.unpriced_models).toEqual(["mystery"])
+    const bare = parse({ pricing: undefined })
+    expect(bare.ok && bare.data.pricing).toBeNull()
+    const neg = parse({ windows: { month: { totals: { total: 1, cny: -3 } }, today: { totals: {} } } })
+    expect(neg.ok && neg.data.windows.month.totals.cny).toBeNull()
+    // 价目段在但桶里没 cny(旧快照混用) → null 显示 —, 不是 ¥0
+    const noCny = parse({ windows: { month: { totals: { total: 1 } }, today: { totals: {} } } })
+    expect(noCny.ok && noCny.data.pricing !== null && noCny.data.windows.month.totals.cny).toBeNull()
+    const upper = parse({ pricing: { ...SNAP.pricing, source: "HTTPS://DOCS.BIGMODEL.CN/cn/guide/start/pricing" } })
+    expect(upper.ok && upper.data.pricing?.source).toBe("https://docs.bigmodel.cn/cn/guide/start/pricing")
   })
 
   it("快照没带额度段 → quota=null(与网关无接口区分)", () => {
@@ -140,6 +174,11 @@ describe("quotaText(额度文案)", () => {
     expect(t).toBe("额度：网关未提供接口")
     expect(t).not.toMatch(/\d/)
   })
+  it("部门自部署 → 无额度, 不出现数字", () => {
+    const t = quotaText({ status: "self_hosted", probed_at: "2026-09-15", detail: null })
+    expect(t).toBe("额度：部门自部署，无额度")
+    expect(t).not.toMatch(/\d/)
+  })
   it("缺额度段 / 未知状态 → 状态未知", () => {
     expect(quotaText(null)).toContain("状态未知")
     expect(quotaText({ status: "weird", probed_at: null, detail: null })).toBe("额度：状态未知（weird）")
@@ -151,6 +190,16 @@ describe("格式与分桶辅助", () => {
     expect(fmtTokens(78_370_000)).toBe("78.37M")
     expect(fmtTokens(1_510_000)).toBe("1.51M")
     expect(fmtTokens(999)).toBe("999")
+  })
+  it("fmtCny 分段精度; null → —", () => {
+    expect(fmtCny(null)).toBe("—")
+    expect(fmtCny(0)).toBe("¥0.00")
+    expect(fmtCny(0.003)).toBe("<¥0.01")
+    expect(fmtCny(0.006)).toBe("¥0.01")
+    expect(fmtCny(0.4234)).toBe("¥0.42")
+    expect(fmtCny(12.46)).toBe("¥12.5")
+    expect(fmtCny(271.6)).toBe("¥272")
+    expect(fmtCny(1234.5)).toBe("¥1,235")
   })
   it("sortBuckets 按合计降序", () => {
     const r = parse()

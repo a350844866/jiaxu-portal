@@ -15,8 +15,8 @@ glm_usage_aggregate — 家服侧: 合并各来源机的 cpclaude 用量帧 → 
 - 按 message.id 去重: 同机同 id 取 token 合计最大那条; 跨机同 id (误配才会出现) 同样只计一次, 记 cross_host_dups
 - host 分桶: 每条去重后的回复恰好落进一个 host 桶, 各桶之和 = 总计
 - 日 / 月边界 = 北京时间 (UTC+8), 与 portal 其它卡一致
-- 只统计 token, 不折算金额: 部门网关没有可引用的价目出处
-- 额度: 2026-09-15 实测网关无额度/余额接口 → quota.status=unavailable, 不编数字 (探测细节见 vault, 本仓库公开不落网关信息)
+- 金额: 按智谱官方 API 标价折算 (PRICING, 来源与抓取日期随快照下发), 只是参考, 部门自部署 GLM 实际不按此计费
+- 额度: 部门自部署, 不设额度 → quota.status=self_hosted, 不编数字 (网关探测细节见 vault, 本仓库公开不落网关信息)
 - 报错文案一律固定措辞, 不回显帧里的任何值 (帧来自来源机, 视为不可信)
 """
 from __future__ import annotations
@@ -52,12 +52,29 @@ HOST_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 # 预期来源机: 文件缺失也要在卡片上报「未收到该机帧」, 不能静默少算一台
 EXPECTED_HOSTS = {"mbp": "MBP（公司）", "yunmai-vm": "家服云脉 VM"}
 
-# 探测细节(路径/状态码/网关域名)只记在私有 vault: 本仓库公开, 不写部门网关信息
+# 额度: 部门自部署 GLM, 按用量使用、不设额度/余额 (用户 2026-09-15 确认); 网关探测细节只记在私有 vault
 QUOTA = {
-    "status": "unavailable",
+    "status": "self_hosted",
     "probed_at": "2026-09-15",
-    "detail": "部门网关只读探测未发现额度/余额接口：计费类路径 404，管理类路径 401（API key 无权，疑需控制台登录态），响应头与 usage 均无余额/限额字段",
+    "detail": "部门自部署 GLM，按用量使用、不设额度/余额（2026-09-15 确认）；网关也没有额度/余额接口",
 }
+
+# 智谱官方 API 标价 (CNY / 百万 tokens), 抓取自 PRICING_SOURCE 的「旗舰模型」「文本模型」表.
+# 部门 GLM 是自部署, 实际不按此计费 —— 金额只是「若按官方 API 购买要花多少」的折算参考.
+# 每档 (输入长度上限(不含), 输入, 输出, 缓存命中); 上限 None = 不分档/最高档.
+# 输入长度按单次请求上下文 = input + cache_read + cache_creation 定档; 官方「32K」按 32000 处理.
+PRICING_SOURCE = "https://docs.bigmodel.cn/cn/guide/start/pricing"
+PRICING_FETCHED_AT = "2026-09-15"
+PRICING = {
+    "glm-5.3": [(None, 8.0, 28.0, 2.0)],
+    "glm-5.3-flash": [(None, 0.8, 2.8, 0.23)],
+    "glm-5.2": [(None, 8.0, 28.0, 2.0)],
+    "glm-5.1": [(32000, 6.0, 24.0, 1.3), (None, 8.0, 28.0, 2.0)],
+    "glm-5-turbo": [(32000, 5.0, 22.0, 1.2), (None, 7.0, 26.0, 1.8)],
+    "glm-5": [(32000, 4.0, 18.0, 1.0), (None, 6.0, 22.0, 1.5)],
+}
+# 网关回的带日期版本名(实测 glm-5-2-260617) → 按同主版本标价计; 映射随快照下发, 卡片如实标出
+DATED_MODEL_RE = re.compile(r"^glm-(\d+)-(\d+)-\d{6}$")
 
 
 def parse_ts(s):
@@ -141,6 +158,37 @@ def keep_max(best: dict, r) -> None:
     prev = best.get(r[0])
     if prev is None or total(r) > total(prev):
         best[r[0]] = r
+
+
+def price_key(model: str):
+    """→ (价目表 key 或 None, 是否经日期版本别名映射)"""
+    m = model.strip().lower()
+    if m.endswith("[1m]"):
+        m = m[:-4]
+    if m in PRICING:
+        return m, False
+    a = DATED_MODEL_RE.match(m)
+    if a:
+        k = "glm-%s.%s" % (a.group(1), a.group(2))
+        if k in PRICING:
+            return k, True
+    return None, False
+
+
+def record_cny(r):
+    """单条回复按官方标价折算的人民币; 模型不在价目表 → None(不计入金额, 单独计数)."""
+    key, _ = price_key(r[2])
+    if key is None:
+        return None
+    ctx = r[4] + r[5] + r[6]
+    tier = PRICING[key][-1]
+    for t in PRICING[key]:
+        if t[0] is not None and ctx < t[0]:
+            tier = t
+            break
+    _, p_in, p_out, p_hit = tier
+    # cache_creation 官方无单独写入价(缓存存储限时免费), 按输入单价计
+    return ((r[4] + r[6]) * p_in + r[5] * p_hit + r[7] * p_out) / 1e6
 
 
 def load_host(path: str, host: str, now: datetime):
@@ -293,26 +341,31 @@ def merge(per_host: dict):
 
 
 def new_bucket() -> dict:
-    return {"input": 0, "cache_read": 0, "cache_creation": 0, "output": 0, "total": 0, "msgs": 0}
+    return {"input": 0, "cache_read": 0, "cache_creation": 0, "output": 0, "total": 0, "msgs": 0, "cny": 0.0, "unpriced_msgs": 0}
 
 
-def add(b: dict, r) -> None:
+def add(b: dict, r, cny) -> None:
     b["input"] += r[4]
     b["cache_read"] += r[5]
     b["cache_creation"] += r[6]
     b["output"] += r[7]
     b["total"] += total(r)
     b["msgs"] += 1
+    if cny is None:
+        b["unpriced_msgs"] += 1
+    else:
+        b["cny"] += cny
 
 
 def new_window() -> dict:
     return {"totals": new_bucket(), "by_model": {}, "by_host": {}, "by_project": {}, "projects_omitted": 0}
 
 
-def add_window(w: dict, host: str, r) -> None:
-    add(w["totals"], r)
+def add_window(w: dict, host: str, r, cny) -> None:
+    add(w["totals"], r, cny)
     for key, name in (("by_model", r[2]), ("by_host", host), ("by_project", r[3])):
-        add(w[key].setdefault(name, new_bucket()), r)
+        add(w[key].setdefault(name, new_bucket()), r, cny)
+
 
 
 def cap_buckets(w: dict, key: str, top: int) -> int:
@@ -337,23 +390,32 @@ def build_snapshot(infos: list, per_host: dict, now: datetime) -> dict:
 
     windows = {"month": new_window(), "today": new_window()}
     all_time, undated, counted = new_bucket(), 0, {}
+    aliases, unpriced = {}, set()
     for host, r in chosen.values():
         counted[host] = counted.get(host, 0) + 1
-        add(all_time, r)
+        cny = record_cny(r)
+        add(all_time, r, cny)
         dt = parse_ts(r[1])
         if dt is None:
             undated += 1
             continue
         bj = dt.astimezone(BJ)
         if bj.strftime("%Y-%m") == month:
-            add_window(windows["month"], host, r)
+            add_window(windows["month"], host, r, cny)
+            # 价目脚注只说本月窗口里出现的模型, 与卡片本月表格一一对应
+            key, aliased = price_key(r[2])
+            if key is None:
+                unpriced.add(r[2])
+            elif aliased:
+                aliases[r[2]] = key
             if bj.strftime("%Y-%m-%d") == today:
-                add_window(windows["today"], host, r)
+                add_window(windows["today"], host, r, cny)
     for info in infos:
         info["counted_msgs"] = counted.get(info["host"], 0)
     for w in windows.values():
         w["projects_omitted"] = cap_buckets(w, "by_project", TOP_PROJECTS)
         cap_buckets(w, "by_model", TOP_MODELS)
+    # 金额不在这里四舍五入: 各桶分别取整后加起来会与总计差几个尾数, 精度交给展示层
 
     ok = [i for i in infos if i["ok"]]
     return {
@@ -375,6 +437,15 @@ def build_snapshot(infos: list, per_host: dict, now: datetime) -> dict:
         "windows": windows,
         "all_time": {"totals": all_time},
         "quota": QUOTA,
+        "pricing": {
+            "currency": "CNY",
+            "source": PRICING_SOURCE,
+            "fetched_at": PRICING_FETCHED_AT,
+            "basis": "按智谱官方 API 标价折算（部门自部署 GLM，实际不按此计费）",
+            "rules": "单次请求上下文（input+cache_read+cache_creation）定档，32K 按 32000；cache_creation 按输入单价；缓存存储官方限时免费未计",
+            "aliases": dict(sorted(aliases.items())[:20]),
+            "unpriced_models": sorted(unpriced)[:20],
+        },
     }
 
 

@@ -8,8 +8,8 @@
  *   → 宿主 glm-usage-snapshot.timer(5min) glm_usage_aggregate.py: 按 message.id 跨机去重、北京时间分窗
  *   → 原子写 /data/portal-state/glm-usage.json   (本模块只解析这一步产物)
  *
- * 快照里只有 token 数与模型/机器/项目目录名 —— 没有会话文本, 也没有金额(网关无价目出处)与额度数字
- * (2026-09-15 探测网关无额度/余额接口).
+ * 快照里只有 token 数、模型/机器/项目目录名与按智谱官方 API 标价折算的人民币 —— 没有会话文本.
+ * 金额只是「若按官方 API 购买」的参考(部门自部署 GLM 实际不按此计费), 价目来源与抓取日期随快照下发.
  */
 
 export const GLM_SNAPSHOT_SCHEMA = 1
@@ -28,6 +28,10 @@ export type GlmBucket = {
   output: number
   total: number
   msgs: number
+  /** 按官方标价折算的人民币; null = 快照没带金额(旧快照) */
+  cny: number | null
+  /** 模型不在价目表、没计入 cny 的回复条数 */
+  unpriced_msgs: number
 }
 
 export type GlmWindow = {
@@ -52,6 +56,18 @@ export type GlmHost = {
 
 export type GlmQuota = { status: string; probed_at: string | null; detail: string | null }
 
+export type GlmPricing = {
+  currency: string
+  /** 只收 https://*.bigmodel.cn 链接(智谱官方站), 其它一律丢弃 */
+  source: string | null
+  fetched_at: string | null
+  basis: string | null
+  rules: string | null
+  /** 带日期版本名 → 计价所用主版本 */
+  aliases: Record<string, string>
+  unpriced_models: string[]
+}
+
 export type GlmSnapshot = {
   generated_at: string
   month: string
@@ -62,6 +78,8 @@ export type GlmSnapshot = {
   windows: { month: GlmWindow; today: GlmWindow }
   /** null = 快照没带额度段(旧/坏快照), 与"网关无接口"是两回事 */
   quota: GlmQuota | null
+  /** null = 快照没带价目段, 卡片不显示金额 */
+  pricing: GlmPricing | null
 }
 
 export type GlmUsageResult =
@@ -97,6 +115,40 @@ function toBucket(v: unknown): GlmBucket {
     output: count(b.output),
     total: count(b.total),
     msgs: count(b.msgs),
+    cny: typeof b.cny === "number" && Number.isFinite(b.cny) && b.cny >= 0 ? b.cny : null,
+    unpriced_msgs: count(b.unpriced_msgs),
+  }
+}
+
+function officialPricingUrl(source: string | null): string | null {
+  if (!source) return null
+  try {
+    const u = new URL(source)
+    const host = u.hostname.toLowerCase()
+    const official = host === "bigmodel.cn" || host.endsWith(".bigmodel.cn")
+    return u.protocol === "https:" && official && !u.username && !u.password ? u.toString() : null
+  } catch {
+    return null
+  }
+}
+
+function toPricing(v: unknown): GlmPricing | null {
+  const p = obj(v)
+  if (!p || str(p.currency) === null) return null
+  const source = str(p.source)
+  const aliases: Record<string, string> = {}
+  for (const [k, a] of Object.entries(obj(p.aliases) ?? {}).slice(0, 20)) if (typeof a === "string") aliases[k.slice(0, 64)] = a.slice(0, 64)
+  return {
+    currency: str(p.currency)!,
+    source: officialPricingUrl(source),
+    fetched_at: str(p.fetched_at),
+    basis: str(p.basis),
+    rules: str(p.rules),
+    aliases,
+    unpriced_models: (Array.isArray(p.unpriced_models) ? p.unpriced_models : [])
+      .filter((m): m is string => typeof m === "string")
+      .slice(0, 20)
+      .map((m) => m.slice(0, 64)),
   }
 }
 
@@ -191,6 +243,7 @@ export function parseGlmSnapshot(raw: string, nowMs: number): GlmUsageResult {
     },
     windows: { month, today },
     quota: quota && str(quota.status) ? { status: str(quota.status)!, probed_at: str(quota.probed_at), detail: str(quota.detail) } : null,
+    pricing: toPricing(frame.pricing),
   }
   return {
     ok: true,
@@ -220,6 +273,7 @@ export function readErrorResult(code: string): Extract<GlmUsageResult, { ok: fal
 /** 额度状态一行文案. 拿不到就如实说, 绝不拿价目表或估算冒充额度 */
 export function quotaText(q: GlmQuota | null): string {
   if (!q) return "额度：状态未知（快照缺额度段）"
+  if (q.status === "self_hosted") return "额度：部门自部署，无额度"
   if (q.status === "unavailable") return "额度：网关未提供接口"
   return `额度：状态未知（${q.status}）`
 }
@@ -229,6 +283,16 @@ export function fmtTokens(n: number): string {
   if (n >= 1e6) return (n / 1e6).toFixed(2) + "M"
   if (n >= 1e3) return (n / 1e3).toFixed(1) + "K"
   return String(n)
+}
+
+/** 人民币: "—"(无金额) / "<¥0.01" / "¥0.42" / "¥12.5" / "¥272" / "¥1,234" */
+export function fmtCny(n: number | null): string {
+  if (n === null) return "—"
+  if (n > 0 && n < 0.005) return "<¥0.01"  // 不让有量的小额四舍五入成 ¥0.00
+  if (n >= 1000) return "¥" + Math.round(n).toLocaleString("en-US")
+  if (n >= 100) return "¥" + n.toFixed(0)
+  if (n >= 10) return "¥" + n.toFixed(1)
+  return "¥" + n.toFixed(2)
 }
 
 export function ageLabel(sec: number | null): string {
@@ -246,7 +310,7 @@ export function sortBuckets(m: Record<string, GlmBucket>): [string, GlmBucket][]
 }
 
 export function bucketTitle(b: GlmBucket): string {
-  return `input ${fmtTokens(b.input)} · cache_read ${fmtTokens(b.cache_read)} · cache_creation ${fmtTokens(b.cache_creation)} · output ${fmtTokens(b.output)} · ${b.msgs} 条回复`
+  return `input ${fmtTokens(b.input)} · cache_read ${fmtTokens(b.cache_read)} · cache_creation ${fmtTokens(b.cache_creation)} · output ${fmtTokens(b.output)} · ${b.msgs} 条回复 · 折算 ${fmtCny(b.cny)}${b.unpriced_msgs > 0 ? `(${b.unpriced_msgs} 条未定价未计入)` : ""}`
 }
 
 /** 单台来源机的同步状态: 帧坏 / 家服侧异常 → 原因; 超 30min 未同步(MBP 下班断网常见) → 提示, 数据仍计入 */

@@ -157,7 +157,8 @@ def test_cross_host_duplicate_id_counted_once(tmp_path):
     put(d, "yunmai-vm", host_frame("yunmai-vm", [rec("dup", "2026-09-15T01:00:00Z", o=9)]))
     s = snap(d)
     assert s["dedup"]["cross_host_dups"] == 1
-    assert s["windows"]["month"]["totals"] == {"input": 0, "cache_read": 0, "cache_creation": 0, "output": 9, "total": 9, "msgs": 1}
+    t = s["windows"]["month"]["totals"]
+    assert (t["output"], t["total"], t["msgs"]) == (9, 9, 1)
     assert list(s["windows"]["month"]["by_host"]) == ["yunmai-vm"]
 
 
@@ -275,6 +276,16 @@ def test_oversized_snapshot_not_published(tmp_path, monkeypatch):
     assert not out.exists()
 
 
+def test_bucket_cny_sums_match_totals_after_capping(tmp_path, monkeypatch):
+    monkeypatch.setattr(agg, "TOP_PROJECTS", 2)
+    d = str(tmp_path)
+    # 每条 ≈ ¥0.00006: 分桶各自四舍五入会让桶和 ≠ 总计, 不取整则严格一致
+    put(d, "mbp", host_frame("mbp", [rec("c%d" % n, "2026-09-15T01:00:00Z", model="glm-5.3", project="p%d" % n, i=7 + n) for n in range(5)]))
+    w = snap(d)["windows"]["month"]
+    for key in ("by_project", "by_model", "by_host"):
+        assert approx(sum(b["cny"] for b in w[key].values()), w["totals"]["cny"])
+
+
 def test_projects_capped_with_other_bucket(tmp_path, monkeypatch):
     monkeypatch.setattr(agg, "TOP_PROJECTS", 2)
     d = str(tmp_path)
@@ -284,10 +295,65 @@ def test_projects_capped_with_other_bucket(tmp_path, monkeypatch):
     assert w["by_project"]["(其他 2 个)"]["total"] == 3 and w["projects_omitted"] == 2
 
 
-def test_quota_block_is_unavailable_without_numbers(tmp_path):
+def test_quota_block_is_self_hosted_without_numbers(tmp_path):
     q = snap(tmp_path)["quota"]
-    assert q["status"] == "unavailable" and "probed_at" in q
+    assert q["status"] == "self_hosted" and "probed_at" in q
     assert not any(k in q for k in ("limit", "balance", "used"))
+
+
+def approx(a, b):
+    return abs(a - b) < 1e-9
+
+
+def test_record_cny_tiers_alias_and_cache_rules():
+    # glm-5.3 不分档: input 8 / cache_read 2 / output 28; cache_creation 按输入单价
+    assert approx(agg.record_cny(rec("a", "", model="glm-5.3", i=1_000_000, cr=1_000_000, cc=1_000_000, o=1_000_000)), 8 + 2 + 8 + 28)
+    # glm-5.1 分档边界: 上下文 31999 → [0,32K) 档; 32000 → ≥32K 档
+    assert approx(agg.record_cny(rec("b", "", model="glm-5.1", i=31999)), 31999 * 6 / 1e6)
+    assert approx(agg.record_cny(rec("c", "", model="glm-5.1", i=16000, cr=16000)), (16000 * 8 + 16000 * 2) / 1e6)
+    # 带日期版本名按主版本计价; [1m] 客户端后缀剥掉
+    assert agg.price_key("glm-5-2-260617") == ("glm-5.2", True)
+    assert agg.price_key("GLM-5.3[1m]") == ("glm-5.3", False)
+    assert agg.price_key("glm-9-9-260101") == (None, False)
+    assert agg.record_cny(rec("d", "", model="(未知)", o=5)) is None
+    # 只认 glm-<主>-<次>-<6位日期>; 其它带日期写法宁可记未定价, 不猜
+    for name in ("glm-5-260617", "glm-5-turbo-260101", "glm-5-3-flash-260101", "glm-5.3-260617"):
+        assert agg.price_key(name) == (None, False), name
+    # 其余型号单价与分档; cache_creation 计入定档上下文
+    M = 1_000_000
+    assert approx(agg.record_cny(rec("e", "", model="glm-5.3-flash", i=M, cr=M, o=M)), 0.8 + 0.23 + 2.8)
+    assert approx(agg.record_cny(rec("f", "", model="glm-5-turbo", i=1000, o=1000)), (1000 * 5 + 1000 * 22) / M)
+    assert approx(agg.record_cny(rec("g", "", model="glm-5-turbo", i=M, o=M)), 7 + 26)
+    assert approx(agg.record_cny(rec("h", "", model="glm-5", i=1000, cr=1000, o=1000)), (1000 * 4 + 1000 * 1 + 1000 * 18) / M)
+    assert approx(agg.record_cny(rec("j", "", model="glm-5", i=M, cr=M, o=M)), 6 + 1.5 + 22)
+    assert approx(agg.record_cny(rec("k", "", model="glm-5.1", i=1000, cc=31000)), 32000 * 8 / M)  # 1000+31000 → ≥32K 档
+
+
+def test_snapshot_cny_buckets_and_pricing_block(tmp_path):
+    d = str(tmp_path)
+    put(d, "mbp", host_frame("mbp", [
+        rec("m1", "2026-09-15T01:00:00Z", model="glm-5.3", i=500_000, cr=1_000_000, o=100_000),   # 4 + 2 + 2.8 = 8.8
+        rec("m2", "2026-09-15T01:00:00Z", model="glm-5-2-260617", i=1_000_000),                   # 8
+        rec("m3", "2026-09-15T01:00:00Z", model="mystery", o=1_000_000),                          # 未定价
+    ]))
+    s = snap(d)
+    t = s["windows"]["month"]["totals"]
+    assert approx(t["cny"], 16.8) and t["unpriced_msgs"] == 1 and t["msgs"] == 3
+    assert approx(s["windows"]["month"]["by_model"]["glm-5.3"]["cny"], 8.8)
+    assert approx(sum(b["cny"] for b in s["windows"]["month"]["by_host"].values()), t["cny"])
+    p = s["pricing"]
+    assert p["currency"] == "CNY" and p["source"].startswith("https://docs.bigmodel.cn/") and p["fetched_at"] == "2026-09-15"
+    assert p["aliases"] == {"glm-5-2-260617": "glm-5.2"} and p["unpriced_models"] == ["mystery"]
+
+
+def test_pricing_footnote_lists_only_month_window_models(tmp_path):
+    d = str(tmp_path)
+    put(d, "mbp", host_frame("mbp", [rec("old", "2026-08-10T01:00:00Z", model="legacy-x", o=1),
+                                     rec("oldalias", "2026-08-10T01:00:00Z", model="glm-5-3-250101", o=1),
+                                     rec("now", "2026-09-15T01:00:00Z", model="glm-5.3", o=1)]))
+    s = snap(d)
+    assert s["pricing"]["unpriced_models"] == [] and s["pricing"]["aliases"] == {}
+    assert s["all_time"]["totals"]["unpriced_msgs"] == 1
 
 
 def test_main_writes_atomically_with_schema(tmp_path):
