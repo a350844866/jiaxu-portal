@@ -52,3 +52,7 @@ data/auth/config.json
 # macOS junk
 ._*
 .DS_Store
+
+# python
+__pycache__/
+.pytest_cache/

@@ -17,6 +17,7 @@ import { AINewsCard } from "@/components/dashboard/ai-news-card"
 import { N8nCard } from "@/components/dashboard/n8n-card"
 import { ZhihuHotCard } from "@/components/dashboard/zhihu-hot-card"
 import { ClaudeSessionCard } from "@/components/dashboard/claude-session-card"
+import { GlmUsageCard } from "@/components/dashboard/glm-usage-card"
 
 /**
  * 显式声明动态渲染。数据链路里有 14 处 `cache: "no-store"` fetch(健康探针 +
@@ -52,6 +53,9 @@ export default function Home() {
       </Suspense>
       <TokenCard />
       <RateLimitCard />
+      <Suspense fallback={<CardSkeleton />}>
+        <GlmUsageCard />
+      </Suspense>
       <Suspense fallback={<CardSkeleton />}>
         <AINewsCard />
       </Suspense>

@@ -1,0 +1,16 @@
+[Unit]
+Description=cpclaude (dept GLM) token usage snapshot for jiaxu-portal
+After=network-online.target
+
+[Service]
+Type=oneshot
+# jiaxu: ssh yunmai-vm 用的是 jiaxu 的 ssh 配置与密钥
+User=jiaxu
+# "-" = VM 拉取失败不阻断后续合并(MBP 帧照常出快照, VM 按旧帧标未同步)
+ExecStartPre=-/data/claude-usage/glm-usage/collect-vm.sh
+# "+" = 以 root 执行: /data/portal-state 是 root 所有(与 claude-quota / claude-topics 快照一致)。
+# 脚本在 root 所有的 /usr/local/lib, -I 隔离模式不把脚本目录/用户 site 放进 sys.path
+ExecStart=+/usr/bin/python3 -I /usr/local/lib/glm-usage/glm_usage_aggregate.py
+TimeoutStartSec=150
+Nice=10
+IOSchedulingClass=idle

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run cpclaude usage snapshot every 5 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=glm-usage-snapshot.service
+
+[Install]
+WantedBy=timers.target
