@@ -6,7 +6,9 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -14,6 +16,12 @@ import glm_usage_aggregate as agg  # noqa: E402
 import glm_usage_extract as ext  # noqa: E402
 
 NOW = datetime(2026, 9, 15, 7, 0, tzinfo=timezone.utc)  # 北京 15:00
+
+
+@pytest.fixture(autouse=True)
+def _no_host_aliases(tmp_path, monkeypatch):
+    # main() 不带 --aliases 时会读 DEFAULT_ALIASES; 部署机上那是真实的网关别名文件, 单测不许碰
+    monkeypatch.setattr(agg, "DEFAULT_ALIASES", str(tmp_path / "no-such-aliases.json"))
 
 
 def assistant(mid, ts, model="glm-5.2", cwd="/Users/u/chanshuWorkSpace/proj-a", i=0, cr=0, cc=0, o=0, text="SECRET-CODE"):
@@ -130,9 +138,9 @@ def rec(mid, ts, model="glm-5.2", project="proj-a", i=0, cr=0, cc=0, o=0):
     return [mid, ts, model, project, i, cr, cc, o]
 
 
-def snap(remote, ledger=None, now=NOW):
+def snap(remote, ledger=None, now=NOW, aliases=None, alias_warning=None):
     infos, per_host = agg.collect_hosts(str(remote), str(ledger) if ledger else None, now)
-    return agg.build_snapshot(infos, per_host, now)
+    return agg.build_snapshot(infos, per_host, now, aliases, alias_warning)
 
 
 def test_host_buckets_partition_totals_without_double_count(tmp_path):
@@ -356,10 +364,213 @@ def test_pricing_footnote_lists_only_month_window_models(tmp_path):
     assert s["all_time"]["totals"]["unpriced_msgs"] == 1
 
 
+# ---------- 非 GLM 价目 / DeepSeek 分时段 / 别名 ----------
+# 测试里的通道别名一律用合成名字: 真实网关通道名不进公开仓库
+
+M = 1_000_000
+
+
+def test_kimi_k3_price_and_cache_creation_at_input_price():
+    # 输入 20 / 缓存命中 2 / 输出 100; cache_creation 按输入单价(= 官方 5min 档缓存写入价)
+    assert approx(agg.record_cny(rec("a", "2026-09-17T03:00:00Z", model="kimi-k3", i=M, cr=M, cc=M, o=M)), 20 + 2 + 20 + 100)
+    # Kimi 不分时段: 周末同价
+    assert approx(agg.record_cny(rec("b", "2026-09-19T03:00:00Z", model="kimi-k3", i=M)), 20)
+
+
+def test_deepseek_peak_offpeak_by_beijing_time():
+    def cny(ts, model="deepseek-flash"):
+        return agg.record_cny(rec("x", ts, model=model, i=M, cr=M, o=M))
+    peak, off = 2 + 0.04 + 8, (2 + 0.04 + 8) / 2
+    # 2026-09-17 周四. 北京 = UTC+8
+    assert approx(cny("2026-09-17T01:00:00Z"), peak)      # 09:00 高峰起点(含)
+    assert approx(cny("2026-09-17T00:59:59Z"), off)       # 08:59:59
+    assert approx(cny("2026-09-17T03:59:59Z"), peak)      # 11:59:59
+    assert approx(cny("2026-09-17T04:00:00Z"), off)       # 12:00 午间空闲(高峰终点不含)
+    assert approx(cny("2026-09-17T05:59:59Z"), off)       # 13:59:59
+    assert approx(cny("2026-09-17T06:00:00Z"), peak)      # 14:00
+    assert approx(cny("2026-09-17T09:59:59Z"), peak)      # 17:59:59
+    assert approx(cny("2026-09-17T10:00:00Z"), off)       # 18:00
+    # 日界按北京时间: UTC 周五 17:00 = 北京周六 01:00 → 空闲; UTC 周日 01:30 = 北京周日 09:30 → 周末空闲
+    assert approx(cny("2026-09-18T17:00:00Z"), off)
+    assert approx(cny("2026-09-20T01:30:00Z"), off)       # 09-20 是调休上班的周日: 官方口径只看周一至周五, 仍空闲
+    # 法定节假日落在工作日: 中秋 09-25(周五)、国庆 10-05(周一) 高峰钟点也按空闲
+    assert approx(cny("2026-09-25T02:00:00Z"), off)
+    assert approx(cny("2026-10-05T02:00:00Z"), off)
+    assert approx(cny("2026-10-08T02:00:00Z"), peak)      # 节后首个工作日
+    # 带时区偏移的时间戳同样换算到北京
+    assert approx(cny("2026-09-17T10:30:00+08:00"), peak)
+    # 无时间戳 → 按标价(高峰): 折扣要有时间戳才给
+    assert approx(cny(""), peak)
+    # V4-Pro 同样分时段
+    assert approx(cny("2026-09-17T02:00:00Z", "deepseek-v4-pro"), 9 + 0.30 + 27)
+    assert approx(cny("2026-09-19T02:00:00Z", "deepseek-v4-pro"), (9 + 0.30 + 27) / 2)
+    # GLM / Kimi 不受时段影响
+    assert approx(agg.record_cny(rec("g", "2026-09-19T02:00:00Z", model="glm-5.3", i=M)), 8)
+
+
+def test_holiday_table_gap_prices_weekdays_at_peak_and_is_flagged(tmp_path):
+    # 用一个不会进表的远期年份(2099-01-01 周四): 表外年份的工作日高峰钟点按高峰算, 快照 rules 标出年份缺口.
+    # 不写死「明年」: 明年的放假通知一出就要补表, 测试不能拦着
+    assert 2099 not in agg.CN_HOLIDAYS
+    assert approx(agg.record_cny(rec("x", "2099-01-01T02:00:00Z", model="deepseek-flash", i=M)), 2)
+    d = str(tmp_path)
+    now = datetime(2099, 1, 5, 7, 0, tzinfo=timezone.utc)
+    put(d, "mbp", host_frame("mbp", [rec("a", "2099-01-05T02:00:00Z", model="deepseek-flash", i=M)], generated_at="2099-01-05T06:55:00Z"))
+    assert "2099 年节假日表缺" in snap(d, now=now)["pricing"]["rules"]
+    put(d, "mbp", host_frame("mbp", [rec("a", "2026-09-15T02:00:00Z", model="deepseek-flash", i=M)]))
+    assert "节假日表缺" not in snap(d)["pricing"]["rules"]
+
+
+def test_holiday_ranges_are_well_formed():
+    for year, ranges in agg.CN_HOLIDAYS.items():
+        for lo, hi in ranges:
+            a, b = datetime.strptime("%d-%s" % (year, lo), "%Y-%m-%d"), datetime.strptime("%d-%s" % (year, hi), "%Y-%m-%d")
+            assert a <= b and (b - a).days < 10, (year, lo, hi)
+
+
+def test_2026_holiday_table_matches_state_council_notice():
+    # 国办发明电〔2025〕7号 放假日里落在周一至周五的日期(逐日列出, 与表里的区间写法相互独立): 全年逐日核对, 表漂了就红
+    expected = {"01-01", "01-02", "02-16", "02-17", "02-18", "02-19", "02-20", "02-23", "04-06", "05-01", "05-04", "05-05",
+                "06-19", "09-25", "10-01", "10-02", "10-05", "10-06", "10-07"}
+    got, day = set(), datetime(2026, 1, 1, 10, 0, tzinfo=agg.BJ)
+    while day.year == 2026:
+        if day.weekday() < 5 and agg.is_cn_holiday(day):
+            got.add(day.strftime("%m-%d"))
+        day += timedelta(days=1)
+    assert got == expected
+    # 放假区间里的周末同样判为节假日(对分时段无影响, 周末本就空闲), 区间外的普通工作日不是
+    assert agg.is_cn_holiday(datetime(2026, 10, 3, 10, 0, tzinfo=agg.BJ)) and not agg.is_cn_holiday(datetime(2026, 10, 8, 10, 0, tzinfo=agg.BJ))
+
+
+def test_static_and_gateway_aliases_exact_match_only():
+    # 官方公开别名: 代码内置
+    assert agg.price_key("deepseek-v4.1-flash") == ("deepseek-flash", True)
+    assert agg.price_key("DeepSeek-V4-Flash") == ("deepseek-flash", True)
+    assert agg.price_key("deepseek-v4-pro-0813") == ("deepseek-v4-pro", True)
+    assert agg.price_key("kimi-k3") == ("kimi-k3", False)
+    # 通道别名: 只来自别名表, 精确匹配(大小写不敏感), 形似的名字不猜
+    gw = {"vendorx/kimi-k3": "kimi-k3", "kimi-k3-zzzz": "kimi-k3", "glm-5.3-t999": "glm-5.3", "glm-53-foo": "glm-5.3"}
+    assert agg.price_key("VendorX/kimi-k3", gw) == ("kimi-k3", True)
+    assert agg.price_key("kimi-k3-ZZZZ", gw) == ("kimi-k3", True)
+    assert agg.price_key("GLM-5.3-T999[1m]", gw) == ("glm-5.3", True)
+    for name in ("kimi-k3-zzzy", "vendory/kimi-k3", "glm-5.3-t998", "kimi-k3-mini", "deepseek-v4-flash-999999", "glm-53"):
+        assert agg.price_key(name, gw) == (None, False), name
+        assert agg.price_key(name) == (None, False), name
+    # 别名表盖不过价目表本名, 也指不到表外 key(load_aliases 会滤掉, 这里再兜一层)
+    assert agg.price_key("glm-5.2", {"glm-5.2": "kimi-k3"}) == ("glm-5.2", False)
+    assert agg.price_key("foo", {"foo": "not-a-key"}) == (None, False)
+    assert approx(agg.record_cny(rec("a", "", model="kimi-k3-zzzz", i=M), gw), 20)
+    assert agg.record_cny(rec("a", "", model="kimi-k3-zzzz", i=M)) is None
+
+
+def test_load_aliases_validates_and_degrades(tmp_path):
+    p = tmp_path / "aliases.json"
+    assert agg.load_aliases(str(p)) == ({}, None)          # 缺文件 = 正常, 无告警
+    assert agg.load_aliases(None) == ({}, None)
+    p.write_text(json.dumps({"aliases": {"Chan-A": "glm-5.3", " chan-b ": "kimi-k3", "bad-target": "gpt-x", "": "glm-5.3", "   ": "kimi-k3", "n": 5}}))
+    table, warn = agg.load_aliases(str(p))
+    assert table == {"chan-a": "glm-5.3", "chan-b": "kimi-k3"} and "4 条无效" in warn
+    # 纯空白别名不收 → 空白模型名仍是未定价
+    assert agg.price_key("   ", table) == (None, False)
+    # 归一化后撞名且指向不同 key: 留先到的, 后一条计无效; 指向相同 key 的重复不算错
+    p.write_text(json.dumps({"aliases": {"Chan-A": "kimi-k3", "chan-a": "glm-5.3", "CHAN-A ": "kimi-k3"}}))
+    table, warn = agg.load_aliases(str(p))
+    assert table == {"chan-a": "kimi-k3"} and "1 条无效" in warn
+    # [1m] 客户端后缀在别名表里同样剥掉, 否则这条别名永远匹配不上
+    p.write_text(json.dumps({"aliases": {"chan-x[1m]": "kimi-k3"}}))
+    table, warn = agg.load_aliases(str(p))
+    assert table == {"chan-x": "kimi-k3"} and warn is None
+    assert agg.price_key("Chan-X[1m]", table) == agg.price_key("chan-x", table) == ("kimi-k3", True)
+    p.write_text("{not json")
+    assert agg.load_aliases(str(p)) == ({}, "别名文件不是合法 JSON，已忽略")
+    p.write_text(json.dumps(["glm-5.3"]))
+    assert agg.load_aliases(str(p))[1] == "别名文件结构不符，已忽略"
+    p.write_text(json.dumps({"aliases": {"n%d" % i: "glm-5.3" for i in range(agg.ALIASES_MAX_ENTRIES + 1)}}))
+    assert agg.load_aliases(str(p)) == ({}, "别名文件结构不符，已忽略")
+    link = tmp_path / "link.json"
+    os.symlink(p, link)
+    assert agg.load_aliases(str(link)) == ({}, "别名文件不可读，已忽略")
+    # 告警文案固定, 不回显文件内容
+    p.write_text(json.dumps({"aliases": {"SECRET-NAME": "nope"}}))
+    assert "SECRET-NAME" not in agg.load_aliases(str(p))[1]
+
+
+def test_snapshot_sources_follow_month_vendors_and_aliases_flow(tmp_path):
+    d = str(tmp_path)
+    put(d, "mbp", host_frame("mbp", [
+        rec("g", "2026-09-15T01:00:00Z", model="glm-5.3", i=M),                 # 8
+        rec("k", "2026-09-15T01:00:00Z", model="kimi-k3-zzzz", i=M),            # 20 (通道别名)
+        rec("d", "2026-09-15T02:00:00Z", model="deepseek-v4.1-flash", i=M),     # 周二 10:00 高峰 2
+        rec("e", "2026-09-13T02:00:00Z", model="deepseek-flash", i=M),          # 周日 空闲 1
+    ]))
+    s = snap(d, aliases={"kimi-k3-zzzz": "kimi-k3"})
+    t = s["windows"]["month"]["totals"]
+    assert approx(t["cny"], 8 + 20 + 2 + 1) and t["unpriced_msgs"] == 0
+    p = s["pricing"]
+    assert [x["vendor"] for x in p["sources"]] == ["zhipu", "deepseek", "kimi"]
+    assert all(x["url"].startswith("https://") and x["fetched_at"] for x in p["sources"])
+    assert p["source"].startswith("https://docs.bigmodel.cn/")  # 旧版卡片字段保留
+    assert p["aliases"] == {"deepseek-v4.1-flash": "deepseek-flash", "kimi-k3-zzzz": "kimi-k3"}
+    assert "DeepSeek" in p["rules"] and "Kimi" in p["rules"] and "warning" not in p
+    # 没给别名表: 同一条落回未定价, 来源里也不再有 kimi
+    s2 = snap(d)
+    assert s2["pricing"]["unpriced_models"] == ["kimi-k3-zzzz"] and s2["windows"]["month"]["totals"]["unpriced_msgs"] == 1
+    assert [x["vendor"] for x in s2["pricing"]["sources"]] == ["zhipu", "deepseek"]
+    # 只有 GLM 的月份: 来源与 rules 不提别家
+    put(d, "mbp", host_frame("mbp", [rec("g", "2026-09-15T01:00:00Z", model="glm-5.3", i=M)]))
+    p3 = snap(d, alias_warning="别名文件不是合法 JSON，已忽略")["pricing"]
+    assert [x["vendor"] for x in p3["sources"]] == ["zhipu"] and "DeepSeek" not in p3["rules"] and "Kimi" not in p3["rules"]
+    assert p3["warning"] == "别名文件不是合法 JSON，已忽略"
+
+
+def test_pricing_tables_are_consistent_with_each_other_and_card_whitelist():
+    # 每个价目 key 都有厂商, 每个厂商都有来源
+    assert set(agg.PRICING_VENDOR) == set(agg.PRICING)
+    assert set(agg.PRICING_VENDOR.values()) <= set(agg.PRICING_SOURCES)
+    assert all(k in agg.PRICING for k in agg.STATIC_ALIASES.values())
+    # 跨语言契约: 来源域名必须落在 portal 卡片 glm-usage-pure.ts 的 OFFICIAL_PRICING_SITES 白名单内,
+    # 否则卡片会丢掉该来源链接、金额却已含该厂商(张冠李戴). 加厂商时两边一起改, 这里与 TS 侧单测各钉一头
+    card_whitelist = ("bigmodel.cn", "deepseek.com", "kimi.com")
+    from urllib.parse import urlsplit
+    for v, src in agg.PRICING_SOURCES.items():
+        u = urlsplit(src["url"])
+        assert u.scheme == "https" and any(u.hostname == r or u.hostname.endswith("." + r) for r in card_whitelist), v
+        assert datetime.strptime(src["fetched_at"], "%Y-%m-%d")
+
+
+def test_rules_mention_only_vendors_in_use(tmp_path):
+    d = str(tmp_path)
+    put(d, "mbp", host_frame("mbp", [rec("k", "2026-09-15T01:00:00Z", model="kimi-k3", i=M),
+                                     rec("d", "2026-09-15T02:00:00Z", model="deepseek-flash", i=M)]))
+    p = snap(d)["pricing"]
+    assert [x["vendor"] for x in p["sources"]] == ["deepseek", "kimi"]
+    assert "智谱" not in p["rules"] and "DeepSeek" in p["rules"] and "Kimi" in p["rules"]
+    # 本月没有任何已定价回复 → 按智谱兜底, 来源与说明一致
+    put(d, "mbp", host_frame("mbp", [rec("u", "2026-09-15T01:00:00Z", model="mystery", o=1)]))
+    p = snap(d)["pricing"]
+    assert [x["vendor"] for x in p["sources"]] == ["zhipu"] and p["rules"].startswith("智谱")
+
+
+def test_main_reads_alias_file(tmp_path):
+    remote, out, al = tmp_path / "remote", tmp_path / "glm-usage.json", tmp_path / "aliases.json"
+    remote.mkdir()
+    now = datetime.now(timezone.utc)
+    ts = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    put(str(remote), "mbp", host_frame("mbp", [rec("k", ts, model="kimi-k3-zzzz", i=M)], generated_at=ts))
+    al.write_text(json.dumps({"aliases": {"kimi-k3-ZZZZ": "kimi-k3"}}))
+    argv = ["--remote-dir", str(remote), "--ledger-dir", str(tmp_path / "ledger"), "--out", str(out)]
+    assert agg.main(argv + ["--aliases", str(al)]) == 0
+    assert approx(json.loads(out.read_text())["windows"]["month"]["totals"]["cny"], 20)
+    assert agg.main(argv + ["--aliases", str(tmp_path / "absent.json")]) == 0
+    s = json.loads(out.read_text())
+    assert s["windows"]["month"]["totals"]["unpriced_msgs"] == 1 and "warning" not in s["pricing"]
+
+
 def test_main_writes_atomically_with_schema(tmp_path):
     out = tmp_path / "state" / "glm-usage.json"
     out.parent.mkdir()
-    assert agg.main(["--remote-dir", str(tmp_path / "remote"), "--ledger-dir", str(tmp_path / "ledger"), "--out", str(out)]) == 0
+    assert agg.main(["--remote-dir", str(tmp_path / "remote"), "--ledger-dir", str(tmp_path / "ledger"), "--out", str(out),
+                     "--aliases", str(tmp_path / "absent.json")]) == 0
     s = json.loads(out.read_text())
     assert s["schema"] == 1 and s["kind"] == "glm-usage" and s["generated_at"].endswith("Z")
     assert [p.name for p in out.parent.iterdir()] == ["glm-usage.json"]

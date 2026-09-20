@@ -8,8 +8,8 @@
  *   → 宿主 glm-usage-snapshot.timer(5min) glm_usage_aggregate.py: 按 message.id 跨机去重、北京时间分窗
  *   → 原子写 /data/portal-state/glm-usage.json   (本模块只解析这一步产物)
  *
- * 快照里只有 token 数、模型/机器/项目目录名与按智谱官方 API 标价折算的人民币 —— 没有会话文本.
- * 金额只是「若按官方 API 购买」的参考(部门自部署 GLM 实际不按此计费), 价目来源与抓取日期随快照下发.
+ * 快照里只有 token 数、模型/机器/项目目录名与按各模型厂商官方 API 标价折算的人民币 —— 没有会话文本.
+ * 金额只是「若按官方 API 购买」的参考(部门网关实际不按此计费), 价目来源与抓取日期随快照下发.
  */
 
 export const GLM_SNAPSHOT_SCHEMA = 1
@@ -56,11 +56,18 @@ export type GlmHost = {
 
 export type GlmQuota = { status: string; probed_at: string | null; detail: string | null }
 
+/** 一家厂商的官方价目页. label 由本模块按域名给定, 不取快照里的文字 */
+export type GlmPricingSource = { label: string; url: string; fetched_at: string | null }
+
 export type GlmPricing = {
   currency: string
-  /** 只收 https://*.bigmodel.cn 链接(智谱官方站), 其它一律丢弃 */
+  /** 只收白名单厂商官方站的 https 链接, 其它一律丢弃(旧快照单来源字段) */
   source: string | null
   fetched_at: string | null
+  /** 本月用到的各厂商价目页; 旧快照没有 sources 时由 source / fetched_at 补成单元素 */
+  sources: GlmPricingSource[]
+  /** 宿主侧价目配置告警(固定文案, 如别名文件损坏) */
+  warning: string | null
   basis: string | null
   rules: string | null
   /** 带日期版本名 → 计价所用主版本 */
@@ -120,30 +127,53 @@ function toBucket(v: unknown): GlmBucket {
   }
 }
 
-function officialPricingUrl(source: string | null): string | null {
+/** 价目页白名单: 厂商官方站根域 → 卡片上的链接文字.
+ *  与宿主 glm_usage_aggregate.py 的 PRICING_SOURCES 是一对契约: 那边加厂商这里要同步(两侧单测各钉一头) */
+const OFFICIAL_PRICING_SITES: [string, string][] = [
+  ["bigmodel.cn", "智谱开放平台价格页"],
+  ["deepseek.com", "DeepSeek 开放平台价格页"],
+  ["kimi.com", "Kimi 开放平台价格页"],
+]
+
+function officialPricingSite(source: string | null): { url: string; label: string } | null {
   if (!source) return null
   try {
     const u = new URL(source)
     const host = u.hostname.toLowerCase()
-    const official = host === "bigmodel.cn" || host.endsWith(".bigmodel.cn")
-    return u.protocol === "https:" && official && !u.username && !u.password ? u.toString() : null
+    const site = OFFICIAL_PRICING_SITES.find(([root]) => host === root || host.endsWith("." + root))
+    return u.protocol === "https:" && site && !u.username && !u.password ? { url: u.toString(), label: site[1] } : null
   } catch {
     return null
   }
 }
 
+function toPricingSources(v: unknown): GlmPricingSource[] {
+  const out: GlmPricingSource[] = []
+  // 先按白名单过滤再截 8 条: 反过来的话, 排在前面的垃圾条目会把合法来源全挤掉
+  for (const item of (Array.isArray(v) ? v : []).slice(0, 64)) {
+    const site = officialPricingSite(str(obj(item)?.url))
+    if (site && !out.some((x) => x.url === site.url)) out.push({ ...site, fetched_at: str(obj(item)?.fetched_at)?.slice(0, 32) ?? null })
+    if (out.length >= 8) break
+  }
+  return out
+}
+
 function toPricing(v: unknown): GlmPricing | null {
   const p = obj(v)
   if (!p || str(p.currency) === null) return null
-  const source = str(p.source)
+  const legacy = officialPricingSite(str(p.source))
+  const fetchedAt = str(p.fetched_at)
+  const sources = toPricingSources(p.sources)
   const aliases: Record<string, string> = {}
   for (const [k, a] of Object.entries(obj(p.aliases) ?? {}).slice(0, 20)) if (typeof a === "string") aliases[k.slice(0, 64)] = a.slice(0, 64)
   return {
     currency: str(p.currency)!,
-    source: officialPricingUrl(source),
-    fetched_at: str(p.fetched_at),
-    basis: str(p.basis),
-    rules: str(p.rules),
+    source: legacy?.url ?? null,
+    fetched_at: fetchedAt,
+    sources: sources.length > 0 ? sources : legacy ? [{ ...legacy, fetched_at: fetchedAt }] : [],
+    warning: str(p.warning)?.slice(0, 120) ?? null,
+    basis: str(p.basis)?.slice(0, 240) ?? null,
+    rules: str(p.rules)?.slice(0, 800) ?? null,
     aliases,
     unpriced_models: (Array.isArray(p.unpriced_models) ? p.unpriced_models : [])
       .filter((m): m is string => typeof m === "string")
@@ -302,6 +332,15 @@ export function ageLabel(sec: number | null): string {
   if (m < 60) return `${m} 分钟前`
   const h = sec / 3600
   return h < 48 ? `${h.toFixed(1)} 小时前` : `${Math.floor(h / 24)} 天前`
+}
+
+/** 别名脚注按计价目标分组: "glm-5.2 ← a / b"(通道别名一多, 逐条列太长) */
+export function aliasGroups(aliases: Record<string, string>): string[] {
+  const byTarget = new Map<string, string[]>()
+  for (const [from, to] of Object.entries(aliases)) byTarget.set(to, [...(byTarget.get(to) ?? []), from])
+  return [...byTarget.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([to, froms]) => `${to} ← ${froms.sort((x, y) => x.localeCompare(y)).join(" / ")}`)
 }
 
 /** 按 token 合计降序(并列按名字), 桶名只有模型/机器/项目目录名 */

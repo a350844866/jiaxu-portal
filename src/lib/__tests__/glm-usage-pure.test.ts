@@ -3,6 +3,7 @@ import {
   GLM_STALE_MS,
   GLM_FUTURE_SKEW_MS,
   ageLabel,
+  aliasGroups,
   beijingDate,
   fmtCny,
   fmtTokens,
@@ -144,6 +145,72 @@ describe("parseGlmSnapshot", () => {
     expect(noCny.ok && noCny.data.pricing !== null && noCny.data.windows.month.totals.cny).toBeNull()
     const upper = parse({ pricing: { ...SNAP.pricing, source: "HTTPS://DOCS.BIGMODEL.CN/cn/guide/start/pricing" } })
     expect(upper.ok && upper.data.pricing?.source).toBe("https://docs.bigmodel.cn/cn/guide/start/pricing")
+  })
+
+  it("价目来源: sources 只收白名单厂商官方站, 链接文字按域名给定; 旧快照单来源补成一条", () => {
+    // 旧快照(无 sources): 由 source / fetched_at 补
+    const legacy = parse()
+    if (!legacy.ok) throw new Error(legacy.error)
+    expect(legacy.data.pricing?.sources).toEqual([{ label: "智谱开放平台价格页", url: "https://docs.bigmodel.cn/cn/guide/start/pricing", fetched_at: "2026-09-15" }])
+    expect(legacy.data.pricing?.warning).toBeNull()
+    const r = parse({
+      pricing: {
+        ...SNAP.pricing,
+        warning: "别名文件不是合法 JSON，已忽略",
+        sources: [
+          { vendor: "zhipu", url: "https://docs.bigmodel.cn/cn/guide/start/pricing", fetched_at: "2026-09-15" },
+          { vendor: "deepseek", url: "https://api-docs.deepseek.com/zh-cn/quick_start/pricing", fetched_at: "2026-09-20", label: "<b>点我</b>" },
+          { vendor: "kimi", url: "https://platform.kimi.com/docs/pricing/chat", fetched_at: 20260920 },
+          { vendor: "dup", url: "https://platform.kimi.com/docs/pricing/chat", fetched_at: "2026-01-01" },
+          { vendor: "evil", url: "https://deepseek.com.evil.example/pricing", fetched_at: "2026-09-20" },
+          { vendor: "http", url: "http://api-docs.deepseek.com/pricing" },
+          { vendor: "cred", url: "https://u:p@platform.kimi.com/x" },
+          "https://docs.bigmodel.cn/",
+          null,
+        ],
+      },
+    })
+    if (!r.ok) throw new Error(r.error)
+    expect(r.data.pricing?.sources).toEqual([
+      { label: "智谱开放平台价格页", url: "https://docs.bigmodel.cn/cn/guide/start/pricing", fetched_at: "2026-09-15" },
+      { label: "DeepSeek 开放平台价格页", url: "https://api-docs.deepseek.com/zh-cn/quick_start/pricing", fetched_at: "2026-09-20" },
+      { label: "Kimi 开放平台价格页", url: "https://platform.kimi.com/docs/pricing/chat", fetched_at: null },
+    ])
+    expect(r.data.pricing?.warning).toBe("别名文件不是合法 JSON，已忽略")
+    // sources 全被滤掉 → 回退旧字段; 旧字段也不合法 → 空(卡片显示「来源缺失」)
+    const fallback = parse({ pricing: { ...SNAP.pricing, sources: [{ url: "https://evil.example/" }] } })
+    expect(fallback.ok && fallback.data.pricing?.sources.map((x) => x.url)).toEqual(["https://docs.bigmodel.cn/cn/guide/start/pricing"])
+    const none = parse({ pricing: { ...SNAP.pricing, source: "https://evil.example/", sources: "nope" } })
+    expect(none.ok && none.data.pricing?.sources).toEqual([])
+    const many = parse({ pricing: { ...SNAP.pricing, sources: Array.from({ length: 30 }, (_, i) => ({ url: `https://docs.bigmodel.cn/p${i}` })) } })
+    expect(many.ok && many.data.pricing?.sources.length).toBe(8)
+    // 垃圾条目排在前面也挤不掉合法来源(先过滤再截断)
+    const buried = parse({
+      pricing: { ...SNAP.pricing, sources: [...Array.from({ length: 20 }, (_, i) => ({ url: `https://evil${i}.example/` })), { url: "https://platform.kimi.com/docs/pricing/chat" }] },
+    })
+    expect(buried.ok && buried.data.pricing?.sources.map((x) => x.label)).toEqual(["Kimi 开放平台价格页"])
+    const long = parse({ pricing: { ...SNAP.pricing, warning: "x".repeat(500), basis: "b".repeat(5000), rules: "r".repeat(5000) } })
+    expect(long.ok && long.data.pricing?.warning?.length).toBe(120)
+    expect(long.ok && long.data.pricing?.basis?.length).toBe(240)
+    expect(long.ok && long.data.pricing?.rules?.length).toBe(800)
+  })
+
+  it("宿主 PRICING_SOURCES 的三个价目页都在白名单内(跨语言契约, 与 test_glm_usage.py 对应)", () => {
+    const urls = [
+      "https://docs.bigmodel.cn/cn/guide/start/pricing",
+      "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+      "https://platform.kimi.com/docs/pricing/chat",
+    ]
+    const r = parse({ pricing: { ...SNAP.pricing, sources: urls.map((url) => ({ url, fetched_at: "2026-09-20" })) } })
+    expect(r.ok && r.data.pricing?.sources.map((x) => x.url)).toEqual(urls)
+  })
+
+  it("aliasGroups: 按计价目标分组, 组内与组间都按名字排序", () => {
+    expect(aliasGroups({})).toEqual([])
+    expect(aliasGroups({ "kimi-k3-zzzz": "kimi-k3", "glm-5-2-260617": "glm-5.2", "glm-52-foo": "glm-5.2", "vendorx/kimi-k3": "kimi-k3" })).toEqual([
+      "glm-5.2 ← glm-5-2-260617 / glm-52-foo",
+      "kimi-k3 ← kimi-k3-zzzz / vendorx/kimi-k3",
+    ])
   })
 
   it("快照没带额度段 → quota=null(与网关无接口区分)", () => {

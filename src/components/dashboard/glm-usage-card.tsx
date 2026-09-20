@@ -6,12 +6,13 @@
  *
  * 口径: 按 message.id 去重(流式分块同 id 多行, 取 token 合计最大), 北京时间日/月边界, host 分桶互斥.
  * 额度: 部门自部署 GLM, 按用量使用、无额度.
- * 金额: 按智谱官方 API 标价折算(价目来源/抓取日期随快照下发), 是「若按官方 API 购买」的参考, 不是实际计费.
+ * 金额: 按各模型厂商官方 API 标价折算(价目来源/抓取日期随快照下发), 是「若按官方 API 购买」的参考, 不是实际计费.
  */
 import { Cpu } from "lucide-react"
 import { fetchGlmUsage } from "@/lib/glm-usage"
 import {
   ageLabel,
+  aliasGroups,
   bucketTitle,
   fmtCny,
   fmtTokens,
@@ -31,7 +32,7 @@ function Header() {
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
       <Cpu className="h-4 w-4 flex-shrink-0 text-teal-400" />
       <span className="text-sm font-medium text-zinc-200">cpclaude 用量</span>
-      <span className="text-xs text-zinc-500">部门自部署 GLM · 金额为官方 API 标价折算</span>
+      <span className="text-xs text-zinc-500">部门 GLM 网关 · 金额为官方 API 标价折算</span>
     </div>
   )
 }
@@ -103,7 +104,8 @@ export async function GlmUsageCard() {
   const priced = pricing !== null
   const hostsByKey = new Map<string, GlmHost>(data.hosts.map((h) => [h.host, h]))
   const troubled = data.hosts.filter((h) => hostSyncLabel(h).warn)
-  const pricingTitle = pricing ? `${pricing.basis ?? "按官方标价折算"}（价目 ${pricing.fetched_at ?? "?"} 抓取）` : undefined
+  const fetchedDates = pricing ? [...new Set(pricing.sources.map((x) => x.fetched_at).filter((d): d is string => d !== null))] : []
+  const pricingTitle = pricing ? `${pricing.basis ?? "按官方标价折算"}（价目 ${fetchedDates.join(" / ") || "?"} 抓取）` : undefined
 
   // 机器桶: 本月有量的 + 预期但没数据的(帧缺失也要露出来, 不能静默少算一台)
   const hostEntries = sortBuckets(month.by_host)
@@ -115,11 +117,7 @@ export async function GlmUsageCard() {
     [`本月（${data.month}）${monthRolled ? " · 已跨月" : ""}`, month.totals],
     [`今日（${data.today.slice(5)}）${dayRolled ? " · 日界已翻" : ""}`, today.totals],
   ]
-  const aliasText = pricing
-    ? Object.entries(pricing.aliases)
-        .map(([from, to]) => `${from} 按 ${to} 计价`)
-        .join("、")
-    : ""
+  const aliasText = pricing && Object.keys(pricing.aliases).length > 0 ? `别名按主名计价：${aliasGroups(pricing.aliases).join("；")}` : ""
 
   return (
     <section className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950/40">
@@ -240,15 +238,20 @@ export async function GlmUsageCard() {
                 金额{pricing.basis ?? "按官方标价折算"}
                 {pricing.rules && `；${pricing.rules}`}
                 {"；价目来源 "}
-                {pricing.source ? (
-                  <a href={pricing.source} target="_blank" rel="noopener noreferrer" className="text-sky-500 hover:underline">
-                    智谱开放平台价格页
-                  </a>
-                ) : (
-                  "（来源缺失）"
-                )}
-                {pricing.fetched_at && `（${pricing.fetched_at} 抓取，官方调价后需更新）`}
+                {pricing.sources.length > 0
+                  ? pricing.sources.map((src, i) => (
+                      <span key={src.url}>
+                        {i > 0 && "、"}
+                        <a href={src.url} target="_blank" rel="noopener noreferrer" className="text-sky-500 hover:underline">
+                          {src.label}
+                        </a>
+                        {src.fetched_at && `（${src.fetched_at} 抓取）`}
+                      </span>
+                    ))
+                  : "（来源缺失）"}
+                {pricing.sources.length > 0 && "，官方调价后需更新"}
                 {aliasText && `；${aliasText}`}
+                {pricing.warning && <span className="text-amber-400">；{pricing.warning}</span>}
                 {pricing.unpriced_models.length > 0 && (
                   <span className="text-amber-400">；未定价模型 {pricing.unpriced_models.join("、")} 不计入金额（标 *）</span>
                 )}
