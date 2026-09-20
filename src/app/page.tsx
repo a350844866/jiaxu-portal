@@ -5,16 +5,14 @@ import { CardSkeleton } from "@/components/dashboard/card-skeleton"
 import { Header } from "@/components/layout/header"
 import { ServiceGrid } from "@/components/dashboard/service-grid"
 import { TokenCard } from "@/components/dashboard/token-card"
+import { ClaudeTopicCard } from "@/components/dashboard/claude-topic-card"
 import { RateLimitCard } from "@/components/dashboard/rate-limit-card"
 import { ResourceRail } from "@/components/dashboard/resource-rail"
 import { MacMiniRail } from "@/components/dashboard/mac-mini-rail"
 import { StateHubCard } from "@/components/dashboard/state-hub-card"
 import { TodoCard } from "@/components/dashboard/todo-card"
 import { PmPaperCard } from "@/components/dashboard/pm-paper-card"
-import { PmScalpCard } from "@/components/dashboard/pm-scalp-card"
-import { TradeMaxCard } from "@/components/dashboard/trademax-card"
 import { AINewsCard } from "@/components/dashboard/ai-news-card"
-import { N8nCard } from "@/components/dashboard/n8n-card"
 import { ZhihuHotCard } from "@/components/dashboard/zhihu-hot-card"
 import { ClaudeSessionCard } from "@/components/dashboard/claude-session-card"
 import { GlmUsageCard } from "@/components/dashboard/glm-usage-card"
@@ -52,6 +50,7 @@ export default function Home() {
         <StateHubCard />
       </Suspense>
       <TokenCard />
+      <ClaudeTopicCard />
       <RateLimitCard />
       <Suspense fallback={<CardSkeleton />}>
         <GlmUsageCard />
@@ -62,17 +61,12 @@ export default function Home() {
       <Suspense fallback={<CardSkeleton />}>
         <ZhihuHotCard />
       </Suspense>
-      <Suspense fallback={<CardSkeleton />}>
-        <N8nCard />
-      </Suspense>
       <Suspense fallback={<CardSkeleton lines={4} />}>
         <TodoCard />
       </Suspense>
+      {/* 2026-09-20 首页精简：PmScalpCard（pm-scalp 07-22 收档）、TradeMaxCard×3（观摩号研究 09-14 结案「不上实盘」，/trademax 路由保留）、
+          N8nCard（n8n 0 workflow）已移出首页；要恢复把对应 import + 标签加回本段即可 */}
       <PmPaperCard />
-      <PmScalpCard />
-      <TradeMaxCard account="trademax" />
-      <TradeMaxCard account="dls" />
-      <TradeMaxCard account="grand" />
       <Suspense fallback={<CardSkeleton lines={6} />}>
         <ServiceGridSection />
       </Suspense>
