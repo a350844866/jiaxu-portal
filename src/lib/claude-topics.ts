@@ -37,6 +37,8 @@ export type TopicSnapshot = {
     total_cost_usd: number
     subagent_cost_usd: number
     tz_offset: number
+    /** 战线口径与校准准确率的一句话说明，生成侧下发（旧快照没有此字段） */
+    calibration?: string
   }
   by_mode: Record<string, Bucket>
   by_topic: Record<string, Bucket>

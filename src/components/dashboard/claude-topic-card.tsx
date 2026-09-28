@@ -7,9 +7,9 @@
  * 与 TokenCard 的分工：TokenCard 答「花了多少 / 哪台机 / 哪个模型」(MySQL 流水)；
  * 本卡答「花在哪条战线上」(会话文本归因)。同源同额，整月总额与 DB 逐分钱对齐。
  *
- * 战线口径不是拍脑袋的关键词：来自一次 15-agent workflow 逐条精读全部 797 个任务
- * 归纳的 11 条 workstream，并用那批判读当 ground truth 校准分类器（成本加权 91.1%，
- * 样本内）。11 条互斥且完备，**占比合计恒为 100%**。
+ * 战线口径不是拍脑袋的关键词：来自逐条精读任务后的人工判读（2026-07 15-agent 797 任务；2026-09-28
+ * 按 9 月 1553 任务重划为 12 条，见 claude-token-usage-tracker §修复其五），校准说明随快照 meta.calibration 下发
+ * 战线互斥且完备，**占比合计恒为 100%**；条数由快照决定，前端不写死。
  *
  * 陈旧不装新鲜：头部永远显示快照年龄；>15min(连丢 3 跳)转琥珀并标注。
  */
@@ -256,8 +256,8 @@ export async function ClaudeTopicCard() {
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-800/60 pt-2.5">
             <span className="text-[11px] leading-relaxed text-zinc-600">
-              {meta.start.slice(5)} → {meta.end.slice(5)} · 战线口径由 15-agent 逐条精读 797
-              个任务归纳，分类器成本加权准确率 91%（样本内）· 成本为 API 标价折算，非订阅实付
+              {meta.start.slice(5)} → {meta.end.slice(5)} ·{" "}
+              {meta.calibration ?? "战线口径见完整报告"} · 成本为 API 标价折算，非订阅实付
             </span>
             <a
               href="/api/claude-topics?format=md"

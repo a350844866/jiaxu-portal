@@ -28,6 +28,7 @@ import { promises as fs } from "node:fs"
 import { createHash, randomBytes } from "node:crypto"
 import path from "node:path"
 import { fetchTopicSnapshot } from "@/lib/claude-topics"
+import { migrateLegacy } from "@/lib/workstream-legacy"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -108,16 +109,24 @@ function serializeConf(names: Record<string, string>, order: string[]): string {
   return lines.join("\n") + "\n"
 }
 
-async function legalIds(): Promise<{ ids: string[]; defaults: Record<string, string> } | null> {
+type Legal = { ids: string[]; defaults: Record<string, string>; legacy: Record<string, string> }
+
+async function legalIds(): Promise<Legal | null> {
   const snap = await fetchTopicSnapshot()
   if (!snap.ok) return null
   const meta = snap.data.meta as unknown as {
     workstream_ids?: string[]
     workstream_defaults?: Record<string, string>
+    legacy_workstream_ids?: Record<string, string>
   }
   if (!Array.isArray(meta.workstream_ids) || !meta.workstream_ids.length) return null
-  return { ids: meta.workstream_ids, defaults: meta.workstream_defaults ?? {} }
+  return {
+    ids: meta.workstream_ids,
+    defaults: meta.workstream_defaults ?? {},
+    legacy: meta.legacy_workstream_ids ?? {},
+  }
 }
+
 
 export async function GET() {
   const legal = await legalIds()
@@ -126,7 +135,7 @@ export async function GET() {
   try {
     const c = await loadConf()
     if (!("missing" in c)) {
-      current = parseConf(c.text)
+      current = legal ? migrateLegacy(parseConf(c.text), legal.legacy, legal.ids) : parseConf(c.text)
       revision = c.revision
     }
   } catch (e) {
@@ -206,7 +215,7 @@ export async function PUT(req: Request) {
   try {
     const c = await loadConf()
     if (!("missing" in c)) {
-      merged = parseConf(c.text)
+      merged = migrateLegacy(parseConf(c.text), legal.legacy, legal.ids)
       currentRevision = c.revision
     }
   } catch (e) {

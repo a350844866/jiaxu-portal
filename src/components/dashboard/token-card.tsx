@@ -54,7 +54,12 @@ const LABELS: Record<SystemName, { name: string; icon: typeof Bot; tone: string 
 // mt4 / ibkr 已停运下线 (2026-06-09),从消耗卡移除其 tile;如恢复交易把 "mt4"/"ibkr" 加回即可
 // worker-pool 跑批 (cwd=/tmp/worker-pool 的 ephemeral session) 2026-08-06 补 tile:
 // 它 2026-05-18 就在入库,但一直不在 VISIBLE 也不在 ALL_SYSTEMS,整桶不计入合计
-const VISIBLE: SystemName[] = ["quant-flow", "auto-content", "worker-pool-other", "pm-paper", "interactive", "mbp"]
+// quant-flow 自 2026-06-07 kill-switch 冻结，桶常年为 0 → 2026-09-28 起只在本月真有花费时才出 tile
+// (桶仍在 usage-db ALL_SYSTEMS 里参与合计，这里只管展示)
+const VISIBLE: SystemName[] = ["auto-content", "worker-pool-other", "pm-paper", "interactive", "mbp"]
+const DORMANT: SystemName[] = ["quant-flow"]
+// Tailwind 类名必须是字面量，按 tile 数取
+const XL_COLS: Record<number, string> = { 4: "xl:grid-cols-4", 5: "xl:grid-cols-5", 6: "xl:grid-cols-6", 7: "xl:grid-cols-7" }
 
 function fmtTokens(n: number): string {
   if (n >= 1e9) return (n / 1e9).toFixed(2) + "B"
@@ -125,13 +130,18 @@ export function TokenCard() {
     )
   }
 
+  const tiles: SystemName[] = [
+    ...DORMANT.filter((s) => (data?.systems.find((x) => x.system === s)?.month_cost_usd ?? 0) > 0),
+    ...VISIBLE,
+  ]
+
   return (
     <section className="mb-6">
       <div className="mb-3 flex items-baseline justify-between">
         <div className="flex items-center gap-2 text-sm text-zinc-300">
           <Activity className="h-4 w-4 text-zinc-500" />
           <span className="font-medium">LLM Token 实时消耗</span>
-          <span className="text-xs text-zinc-600">按业务系统分桶 · 北京时间今日 · 10s 轮询 (quant-flow 含 Codex)</span>
+          <span className="text-xs text-zinc-600">按业务系统分桶 · 北京时间今日 · 10s 轮询</span>
         </div>
         {data && (
           <div className="flex gap-4 text-xs text-zinc-500 tabular-nums">
@@ -151,8 +161,8 @@ export function TokenCard() {
         )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        {VISIBLE.map((s) => {
+      <div className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-3 ${XL_COLS[tiles.length] ?? "xl:grid-cols-6"}`}>
+        {tiles.map((s) => {
           const row = data?.systems.find((x) => x.system === s)
           const meta = LABELS[s]
           const Icon = meta.icon
