@@ -11,6 +11,19 @@ function ageText(sec: number | null): string {
   return `${Math.floor(sec / 86400)}d 前`
 }
 
+function stoppedDate(sec: number): string {
+  return new Date(sec * 1000).toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" })
+}
+
+const VERDICT_LABELS: Record<string, string> = {
+  uncertain: "不确定",
+  window_exists: "窗口存在",
+}
+
+function verdictLabel(v: string): string {
+  return VERDICT_LABELS[v] ?? v
+}
+
 const STAGE_LABELS: [string, string][] = [
   ["weak_match", "弱命中"],
   ["triage_queued", "进分诊"],
@@ -114,20 +127,42 @@ export function EventLanePanel({ lane }: { lane: EventLaneView }) {
         <span className="text-[11px] text-zinc-500">
           Phase 1 shadow 遥测 · 新闻触发 → 分诊 → 即时预测 → 配对影子执行(零真单)
         </span>
-        <span className="ml-auto flex items-center gap-1.5 text-[11px] text-zinc-500">
+        {lane.stopped ? (
           <span
-            className={cn("inline-block h-2 w-2 rounded-full", lane.watcherStale ? "bg-rose-500" : "bg-emerald-500")}
-            title={lane.watcherStale ? "watcher 心跳超时" : "watcher 正常"}
-          />
-          watcher {ageText(lane.watcherAgeSeconds)}
-        </span>
+            className="ml-auto flex items-center gap-1.5 text-[11px] text-zinc-500"
+            title={
+              lane.probeDone
+                ? "已按预注册判定停止接收新事件；影子仓已全部结算，probe 可以下线"
+                : lane.probeStale
+                  ? "已按预注册判定停止接收新事件；probe 心跳超时——在手影子仓的结算扫描可能停了"
+                  : "已按预注册判定停止接收新事件；probe 仍在跑，直到在手影子仓全部结算（结算扫描的网络错误由周报汇总）"
+            }
+          >
+            <span
+              className={cn("inline-block h-2 w-2 rounded-full", lane.probeStale ? "bg-rose-500" : "bg-zinc-500")}
+            />
+            已停止接收{lane.stopped.at != null && ` · ${stoppedDate(lane.stopped.at)}`}
+            {lane.stopped.verdict && ` · 判定 ${verdictLabel(lane.stopped.verdict)}`}
+            {lane.probeDone ? " · probe 已完成" : ` · probe ${ageText(lane.summaryAgeSeconds)}`}
+          </span>
+        ) : (
+          <span className="ml-auto flex items-center gap-1.5 text-[11px] text-zinc-500">
+            <span
+              className={cn("inline-block h-2 w-2 rounded-full", lane.watcherStale ? "bg-rose-500" : "bg-emerald-500")}
+              title={lane.watcherStale ? "watcher 心跳超时" : "watcher 正常"}
+            />
+            watcher {ageText(lane.watcherAgeSeconds)}
+          </span>
+        )}
       </div>
 
       <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-zinc-400">
-        <span>
-          今日 LLM:分诊 <span className="text-zinc-200">{lane.capsToday.triage}/{lane.capsToday.triageCap}</span>
-          {" · "}预测 <span className="text-zinc-200">{lane.capsToday.predict}/{lane.capsToday.predictCap}</span>
-        </span>
+        {!lane.stopped && (
+          <span>
+            今日 LLM:分诊 <span className="text-zinc-200">{lane.capsToday.triage}/{lane.capsToday.triageCap}</span>
+            {" · "}预测 <span className="text-zinc-200">{lane.capsToday.predict}/{lane.capsToday.predictCap}</span>
+          </span>
+        )}
         <span>
           累计预测 <span className="text-zinc-200">{lane.predictionsCount}</span> · 影子仓{" "}
           <span className="text-zinc-200">{lane.positions.length}</span>
@@ -162,7 +197,10 @@ export function EventLanePanel({ lane }: { lane: EventLaneView }) {
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           {pairedEndpoints.map(([endpoint, b]) => (
             <div key={endpoint} className="rounded-lg border border-zinc-800/70 bg-zinc-950/40 px-3 py-2 text-xs">
-              <div className="text-zinc-500">{endpoint.replace("_taker0_minus_", " 早进−晚进 ")}</div>
+              <div className="text-zinc-500">
+                {endpoint.replace("_taker0_minus_", " 早进−晚进 ")}
+                <span className="ml-1 text-zinc-600">全样本(非主检验口径)</span>
+              </div>
               <div className="mt-0.5">
                 <span className={cn("text-sm font-semibold tabular-nums", mtmClass(b.mean))}>{mtmText(b.mean)}</span>
                 <span className="ml-2 text-zinc-500">

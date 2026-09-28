@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs"
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { readEventLane } from "../pm-paper-event-reader"
@@ -31,6 +31,109 @@ describe("readEventLane", () => {
     expect(view.funnelTotal).toEqual({})
     expect(view.capsToday).toMatchObject({ triage: 0, predict: 0 })
     expect(view.positions).toEqual([])
+  })
+
+  it("STOPPED.json 存在 → 心跳过期也不算 stale,带出停止时间与判定", async () => {
+    const ev = path.join(stateDir, "event")
+    mkdirSync(ev, { recursive: true })
+    const cursor = path.join(ev, "cursor.json")
+    writeFileSync(cursor, JSON.stringify({ last_event_id: 1 }))
+    const old = Date.now() / 1000 - 3 * 86400
+    utimesSync(cursor, old, old)
+    writeFileSync(path.join(ev, "STOPPED.json"), JSON.stringify({ stopped_at: 1790582579, verdict: "uncertain" }))
+    const view = await readEventLane()
+    expect(view.stopped).toEqual({ at: 1790582579, verdict: "uncertain" })
+    expect(view.watcherStale).toBe(false)
+    expect(view.watcherAgeSeconds).toBeGreaterThan(2 * 86400)
+  })
+
+  it("没有 STOPPED.json 且心跳过期 → stale;STOPPED.json 坏 JSON 同样按 stale 报", async () => {
+    const ev = path.join(stateDir, "event")
+    mkdirSync(ev, { recursive: true })
+    const cursor = path.join(ev, "cursor.json")
+    writeFileSync(cursor, JSON.stringify({ last_event_id: 1 }))
+    const old = Date.now() / 1000 - 3600
+    utimesSync(cursor, old, old)
+    let view = await readEventLane()
+    expect(view.stopped).toBeNull()
+    expect(view.watcherStale).toBe(true)
+    writeFileSync(path.join(ev, "STOPPED.json"), "{not json")
+    view = await readEventLane()
+    expect(view.stopped).toBeNull()
+    expect(view.watcherStale).toBe(true)
+  })
+
+  it("STOPPED.json 字段缺失/类型不对 → 仍算已停止,字段为 null", async () => {
+    const ev = path.join(stateDir, "event")
+    mkdirSync(ev, { recursive: true })
+    writeFileSync(path.join(ev, "STOPPED.json"), JSON.stringify({ stopped_at: "yesterday" }))
+    const view = await readEventLane()
+    expect(view.stopped).toEqual({ at: null, verdict: null })
+    expect(view.watcherStale).toBe(false)
+  })
+
+  it("STOPPED.json 是数组 → 不算已停止,按心跳判 stale", async () => {
+    const ev = path.join(stateDir, "event")
+    mkdirSync(ev, { recursive: true })
+    writeFileSync(path.join(ev, "STOPPED.json"), JSON.stringify([{ stopped_at: 1 }]))
+    const view = await readEventLane()
+    expect(view.stopped).toBeNull()
+    expect(view.watcherStale).toBe(true) // 无 cursor.json
+  })
+
+  it("已停止时 probeStale 看 summary.json 新鲜度:新鲜 → false,过期/缺失 → true", async () => {
+    const ev = path.join(stateDir, "event")
+    mkdirSync(ev, { recursive: true })
+    writeFileSync(path.join(ev, "STOPPED.json"), JSON.stringify({ stopped_at: 1790582579, verdict: "uncertain" }))
+    let view = await readEventLane()
+    expect(view.probeStale).toBe(true) // summary.json 缺失
+    const summary = path.join(ev, "summary.json")
+    writeFileSync(summary, JSON.stringify({ updated: 1 }))
+    view = await readEventLane()
+    expect(view.probeStale).toBe(false)
+    const old = Date.now() / 1000 - 4 * 3600
+    utimesSync(summary, old, old)
+    view = await readEventLane()
+    expect(view.probeStale).toBe(true)
+  })
+
+  it("STOPPED.json 时间戳越界/非有限 → at=null 但仍算已停止", async () => {
+    const ev = path.join(stateDir, "event")
+    mkdirSync(ev, { recursive: true })
+    const marker = path.join(ev, "STOPPED.json")
+    for (const raw of ['{"stopped_at": 1e20}', '{"stopped_at": 1e999}', '{"stopped_at": -5}']) {
+      writeFileSync(marker, raw)
+      const view = await readEventLane()
+      expect(view.stopped).toEqual({ at: null, verdict: null })
+    }
+  })
+
+  it("已停止且影子仓全部结算 → probeDone,summary 过期也不报 stale", async () => {
+    const ev = path.join(stateDir, "event")
+    mkdirSync(ev, { recursive: true })
+    writeFileSync(path.join(ev, "STOPPED.json"), JSON.stringify({ stopped_at: 1790582579, verdict: "uncertain" }))
+    const summary = path.join(ev, "summary.json")
+    writeFileSync(summary, JSON.stringify({ settled: { n: 2, taker0_pnl_sum: 1 } }))
+    const old = Date.now() / 1000 - 10 * 3600
+    utimesSync(summary, old, old)
+    const shadow = (secondSettled: boolean) =>
+      writeFileSync(
+        path.join(ev, "shadow_state.json"),
+        JSON.stringify({
+          positions: {
+            a: { prediction_id: "a", market_id: "m1", settled: { won: true } },
+            b: { prediction_id: "b", market_id: "m2", settled: secondSettled ? { won: false } : null },
+          },
+        }),
+      )
+    shadow(true)
+    let view = await readEventLane()
+    expect(view.probeDone).toBe(true)
+    expect(view.probeStale).toBe(false)
+    shadow(false) // summary 计数说全结算也不信,以 shadow_state 为准
+    view = await readEventLane()
+    expect(view.probeDone).toBe(false)
+    expect(view.probeStale).toBe(true)
   })
 
   it("完整状态 → 漏斗计数/仓位映射/配对差/MTM 计算正确,坏尾行不炸", async () => {

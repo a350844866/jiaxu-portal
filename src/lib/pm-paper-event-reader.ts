@@ -7,6 +7,10 @@
  * and most files only appear after the first news trigger — missing files are a
  * normal "armed, waiting" state, not an error. jsonl reads are tail-capped like
  * pm-paper-detail-reader (append-only files grow forever).
+ *
+ * state/event/STOPPED.json = the lane was deliberately stopped (2026-09-28 verdict:
+ * watcher cron commented out, probe kept to settle open shadows). A stopped lane has
+ * no watcher heartbeat by design, so it must not render as "watcher stale".
  */
 import { promises as fs } from "node:fs"
 import path from "node:path"
@@ -16,6 +20,7 @@ const MAX_JSONL_LINES = 3000
 const TRIAGE_CAP = 24
 const PREDICT_CAP = 8
 const WATCHER_STALE_S = 35 * 60 // cron */10 — 3 missed beats + margin
+const PROBE_STALE_S = 3 * 3600 // idle probe rebuilds summary.json hourly — 2 missed + margin
 
 export interface EventLegView {
   status: string
@@ -42,8 +47,16 @@ export interface PairedBlock {
   ci95: [number, number] | null
 }
 
+export interface EventLaneStopped {
+  at: number | null // unix seconds
+  verdict: string | null
+}
+
 export interface EventLaneView {
   present: boolean // event dir exists (lane deployed)
+  stopped: EventLaneStopped | null // STOPPED.json present → intake deliberately stopped
+  probeStale: boolean // only meaningful when stopped: probe is then the lane's sole liveness signal
+  probeDone: boolean // stopped and every shadow position settled → probe has nothing left to do
   watcherAgeSeconds: number | null // cursor.json mtime age = heartbeat
   watcherStale: boolean
   summaryAgeSeconds: number | null
@@ -123,6 +136,10 @@ interface ShadowPos {
   marks?: Record<string, { side_mid?: number | null } | null>
   settled?: { won?: boolean } | null
 }
+interface StoppedFile {
+  stopped_at?: unknown
+  verdict?: unknown
+}
 interface SummaryFile {
   updated?: number
   paired?: Record<string, Record<string, { n: number; mean: number; ci95_cluster?: [number, number] | null }>>
@@ -138,7 +155,7 @@ export async function readEventLane(): Promise<EventLaneView> {
     return emptyView(false)
   }
 
-  const [summary, caps, pcaps, shadowState, cursorAge, summaryAge, candidates, predictions, universe] =
+  const [summary, caps, pcaps, shadowState, cursorAge, summaryAge, candidates, predictions, universe, stoppedFile] =
     await Promise.all([
       readJson<SummaryFile>(path.join(dir, "summary.json")),
       readJson<Record<string, { triage?: number }>>(path.join(dir, "caps.json")),
@@ -151,7 +168,21 @@ export async function readEventLane(): Promise<EventLaneView> {
       readJson<{ markets?: { id: string; question?: string }[] }>(
         path.join(pmPaperStateDir(), "universe.json"),
       ),
+      readJson<StoppedFile>(path.join(dir, "STOPPED.json")),
     ])
+  // any parseable plain JSON object counts as "stopped" (fields are display-only); an
+  // unparseable or non-object marker falls through to the heartbeat check, so it shows up
+  // red rather than silently green
+  const stopped: EventLaneStopped | null =
+    stoppedFile && typeof stoppedFile === "object" && !Array.isArray(stoppedFile)
+      ? {
+          at: validUnixSeconds(stoppedFile.stopped_at),
+          verdict: typeof stoppedFile.verdict === "string" ? stoppedFile.verdict : null,
+        }
+      : null
+  // derived from the authoritative position set, not summary.json's counters
+  const allShadow = Object.values(shadowState?.positions ?? {}).filter((p) => Boolean(p && p.prediction_id))
+  const probeDone = stopped != null && allShadow.length > 0 && allShadow.every((p) => p.settled != null)
 
   // caps use the writer's local date keys (Asia/Shanghai on the home server)
   const todayKey = new Date(now * 1000).toLocaleDateString("sv-SE", { timeZone: "Asia/Shanghai" })
@@ -206,8 +237,11 @@ export async function readEventLane(): Promise<EventLaneView> {
 
   return {
     present: true,
+    stopped,
+    probeStale: !probeDone && (summaryAge == null || summaryAge > PROBE_STALE_S),
+    probeDone,
     watcherAgeSeconds: cursorAge,
-    watcherStale: cursorAge == null || cursorAge > WATCHER_STALE_S,
+    watcherStale: stopped ? false : cursorAge == null || cursorAge > WATCHER_STALE_S,
     summaryAgeSeconds: summaryAge,
     capsToday: {
       triage: caps?.[todayKey]?.triage ?? 0,
@@ -226,9 +260,17 @@ export async function readEventLane(): Promise<EventLaneView> {
   }
 }
 
+// finite and inside a sane range, so the panel's date formatter never renders "Invalid Date"
+function validUnixSeconds(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) && v > 0 && v < 1e11 ? v : null
+}
+
 function emptyView(present: boolean): EventLaneView {
   return {
     present,
+    stopped: null,
+    probeStale: true,
+    probeDone: false,
     watcherAgeSeconds: null,
     watcherStale: true,
     summaryAgeSeconds: null,
