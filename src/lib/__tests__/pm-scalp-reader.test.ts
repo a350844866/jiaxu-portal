@@ -37,7 +37,8 @@ describe("readPmScalpSnapshot", () => {
     expect(snap.heartbeatAgeSeconds).toBeNull()
     expect(snap.windowsRecorded).toBe(0)
     expect(snap.basis).toBeNull()
-    expect(snap.variants.length).toBeGreaterThanOrEqual(6) // 变体骨架始终存在
+    // 9d09e08 起零活动变体不渲染（v5 纪元只带幸存者），空态下变体表为空
+    expect(snap.variants).toEqual([])
     expect(snap.openEntries).toEqual([])
     expect(snap.recentTrades).toEqual([])
   })
@@ -95,8 +96,8 @@ describe("readPmScalpSnapshot", () => {
     const n1 = snap.variants.find((v) => v.id === "N1")!
     expect(n1.settled).toBe(1)
     expect(n1.pnl).toBeCloseTo(122.15)
-    const n3 = snap.variants.find((v) => v.id === "N3")!
-    expect(n3.settled).toBe(0) // 孤儿 settle 不计入
+    // 孤儿 settle 不计入 → N3 零活动 → 按 9d09e08 规则不出现在变体表
+    expect(snap.variants.find((v) => v.id === "N3")).toBeUndefined()
     expect(snap.totals.settled).toBe(1)
   })
 
@@ -111,7 +112,13 @@ describe("readPmScalpSnapshot", () => {
         "",
       ].join("\n"),
     )
-    await fs.writeFile(path.join(dir, "paper", "heartbeat"), String(Math.floor(now / 1000) - 9))
+    // v5 起 papertrader 与 heartbeat 文件已退役，活性 = paper/windows-v5/ 最新关窗工件的 mtime（1bfb5d0）
+    const v5 = path.join(dir, "paper", "windows-v5")
+    await fs.mkdir(v5, { recursive: true })
+    const art = path.join(v5, `${wts}.v5.json`)
+    await fs.writeFile(art, "{}")
+    const t9 = new Date(now - 9000)
+    await fs.utimes(art, t9, t9)
     const snap = await readPmScalpSnapshot()
     expect(snap.windowsRecorded).toBe(1)
     expect(snap.dataAgeSeconds).toBeGreaterThanOrEqual(2)

@@ -360,3 +360,46 @@ export function hostSyncLabel(h: GlmHost): { text: string; warn: boolean } {
   if (h.stale) return { text: `未同步 ${ageLabel(h.age_seconds)}`, warn: true }
   return { text: `同步于 ${ageLabel(h.age_seconds)}`, warn: false }
 }
+
+/**
+ * 「按模型」展示归并（2026-09-28）：网关把同一个模型报成十几种名字（GLM-5.3 / zai/glm-5.3 /
+ * GLM-5.3-P000 / accounts/fireworks/models/kimi-k3 …），卡片曾经一名一行列了 20 行。
+ * 只做**保守、确定**的归并：先查计价别名表，再做「小写 + 去掉最后一个 / 之前的厂商前缀」，
+ * 再查一次别名表；归一后名字完全相同才合并，不做模糊匹配（sn-kimi-k3 这种仍单独一行）。
+ * 只影响展示；金额仍是宿主侧逐条算好的，这里只做加总（全员 null 才是 null）。
+ */
+export function modelDisplayKey(name: string, aliases: Record<string, string>): string {
+  const lowerAliases = new Map(Object.entries(aliases).map(([k, v]) => [k.toLowerCase(), v]))
+  const first = aliases[name] ?? lowerAliases.get(name.toLowerCase())
+  if (first) return first
+  const bare = name.toLowerCase().replace(/^.*\//, "")
+  return lowerAliases.get(bare) ?? bare
+}
+
+export function groupModelBuckets(
+  byModel: Record<string, GlmBucket>,
+  aliases: Record<string, string>
+): { buckets: Record<string, GlmBucket>; members: Record<string, string[]> } {
+  const buckets: Record<string, GlmBucket> = {}
+  const members: Record<string, string[]> = {}
+  for (const [name, b] of Object.entries(byModel)) {
+    const key = modelDisplayKey(name, aliases)
+    const acc = buckets[key]
+    if (!acc) {
+      buckets[key] = { ...b }
+      members[key] = [name]
+      continue
+    }
+    acc.input += b.input
+    acc.cache_read += b.cache_read
+    acc.cache_creation += b.cache_creation
+    acc.output += b.output
+    acc.total += b.total
+    acc.msgs += b.msgs
+    acc.unpriced_msgs += b.unpriced_msgs
+    acc.cny = acc.cny == null && b.cny == null ? null : (acc.cny ?? 0) + (b.cny ?? 0)
+    members[key].push(name)
+  }
+  for (const k of Object.keys(members)) members[k].sort((a, b) => a.localeCompare(b))
+  return { buckets, members }
+}

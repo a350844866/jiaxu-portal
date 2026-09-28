@@ -287,3 +287,29 @@ describe("格式与分桶辅助", () => {
     expect(ageLabel(30)).toBe("刚刚")
   })
 })
+
+import { groupModelBuckets, modelDisplayKey } from "../glm-usage-pure"
+
+describe("groupModelBuckets（展示归并）", () => {
+  const al = { "GLM-5.3-P000": "glm-5.3", "moonshotai/kimi-k3": "kimi-k3", "kimi-k3-BTZN": "kimi-k3" }
+  const b = (total: number, cny: number | null, unpriced = 0) => ({
+    input: total, cache_read: 0, cache_creation: 0, output: 0, total, msgs: 1, cny, unpriced_msgs: unpriced,
+  })
+  it("别名 / 大小写 / 厂商前缀归一后完全相同才合并", () => {
+    expect(modelDisplayKey("zai/glm-5.3", al)).toBe("glm-5.3")
+    expect(modelDisplayKey("GLM-5.3", al)).toBe("glm-5.3")
+    expect(modelDisplayKey("accounts/fireworks/models/kimi-k3", al)).toBe("kimi-k3")
+    expect(modelDisplayKey("sn-kimi-k3", al)).toBe("sn-kimi-k3")
+  })
+  it("数字加总；cny 全员 null 才是 null；成员表排序", () => {
+    const { buckets, members } = groupModelBuckets(
+      { "glm-5.3": b(10, 2), "GLM-5.3-P000": b(5, 1), "zai/glm-5.3": b(1, null, 1), "sn-kimi-k3": b(3, null, 1) },
+      al,
+    )
+    expect(buckets["glm-5.3"].total).toBe(16)
+    expect(buckets["glm-5.3"].cny).toBe(3)
+    expect(buckets["glm-5.3"].unpriced_msgs).toBe(1)
+    expect(buckets["sn-kimi-k3"].cny).toBeNull()
+    expect(members["glm-5.3"]).toEqual(["GLM-5.3-P000", "glm-5.3", "zai/glm-5.3"].sort((a, b) => a.localeCompare(b)))
+  })
+})

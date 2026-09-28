@@ -13,6 +13,7 @@ import { fetchGlmUsage } from "@/lib/glm-usage"
 import {
   ageLabel,
   aliasGroups,
+  groupModelBuckets,
   bucketTitle,
   fmtCny,
   fmtTokens,
@@ -108,6 +109,7 @@ export async function GlmUsageCard() {
   const pricingTitle = pricing ? `${pricing.basis ?? "按官方标价折算"}（价目 ${fetchedDates.join(" / ") || "?"} 抓取）` : undefined
 
   // 机器桶: 本月有量的 + 预期但没数据的(帧缺失也要露出来, 不能静默少算一台)
+  const modelGroups = groupModelBuckets(month.by_model, pricing?.aliases ?? {})
   const hostEntries = sortBuckets(month.by_host)
   for (const h of data.hosts) {
     if (!month.by_host[h.host]) hostEntries.push([h.host, EMPTY_BUCKET])
@@ -210,7 +212,22 @@ export async function GlmUsageCard() {
           </div>
 
           <div className="grid gap-5 border-t border-zinc-800/60 pt-4 md:grid-cols-3">
-            <BucketBars title="本月 · 按模型" entries={sortBuckets(month.by_model)} tone="bg-teal-500" priced={priced} />
+            <BucketBars
+              title="本月 · 按模型"
+              entries={sortBuckets(modelGroups.buckets)}
+              tone="bg-teal-500"
+              priced={priced}
+              side={(k) => {
+                const m = modelGroups.members[k] ?? []
+                const un = modelGroups.buckets[k]?.unpriced_msgs ?? 0
+                // 归并了多个网关名才显示「含 …」；有未定价条数必须醒目（合并前它们单独一行 ¥0，合并后会被淹没）
+                const parts = [
+                  ...(m.length > 1 || (m.length === 1 && m[0] !== k) ? [`含 ${m.join(" / ")}`] : []),
+                  ...(un > 0 ? [`${un} 条未定价未计入 ¥`] : []),
+                ]
+                return parts.length ? { text: parts.join(" · "), warn: un > 0 } : null
+              }}
+            />
             <BucketBars
               title="本月 · 按机器"
               entries={hostEntries}

@@ -112,6 +112,55 @@ export function PmPaperCard() {
           </div>
         )}
 
+        {/* pm-live 放在 bootstrapping / err 分支之外：paper 还没数据时真钱状态也必须看得见（Codex review） */}
+        {data?.live && (
+          <div
+            className={cn(
+              "mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg border px-2.5 py-1.5 text-xs",
+              data.live.latches.length
+                ? "border-rose-500/40 bg-rose-500/5"
+                : data.live.stale
+                  ? "border-amber-500/40 bg-amber-500/5"
+                  : "border-emerald-500/30 bg-emerald-500/5",
+            )}
+            title={data.live.generatedAt ? `live/stats.json 生成于 ${data.live.generatedAt}` : undefined}
+          >
+            <span className="text-zinc-300">
+              真钱探针 pm-live{" "}
+              {data.live.latches.length ? (
+                <span className="font-medium text-rose-300">
+                  闩锁中({data.live.latches.join(" / ")})— 不下新单
+                </span>
+              ) : data.live.stale ? (
+                // settler 断了：不能凭旧快照说「运行中」
+                <span className="font-medium text-amber-300">
+                  状态过期{data.live.ageSeconds != null ? ` ${Math.round(data.live.ageSeconds / 3600)}h` : ""}
+                </span>
+              ) : data.live.armed && data.live.mode === "live" ? (
+                <span className="font-medium text-emerald-300">运行中</span>
+              ) : (
+                <span className="text-zinc-400">未点火</span>
+              )}
+            </span>
+            <span className="tabular-nums text-zinc-400">
+              余额 {data.live.collateralNow != null ? `$${data.live.collateralNow.toFixed(2)}` : "—"}
+              {" · "}
+              {data.live.ageSeconds == null
+                ? "无统计快照"
+                : `挂 ${data.live.nOpen} · 成交 ${data.live.nFilled} · 结算 ${data.live.nSettled}`}
+              {data.live.nSettled > 0 && <> · P&amp;L {fmtUsd(data.live.realizedPnl)}</>}
+              {data.live.ageSeconds != null && (
+                <span className={data.live.stale ? "ml-1 text-amber-400" : "ml-1 text-zinc-600"}>
+                  · 统计 {fmtAge(data.live.ageSeconds)}
+                </span>
+              )}
+              {data.live.anomalies > 0 && (
+                <span className="ml-1 text-amber-400">· 异常 {data.live.anomalies}</span>
+              )}
+            </span>
+          </div>
+        )}
+
         {err ? (
           <div className="mt-2 text-xs text-rose-400">{err}</div>
         ) : !data ? (

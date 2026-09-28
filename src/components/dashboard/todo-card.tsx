@@ -39,7 +39,15 @@ const SYSTEM_ORDER = [
   "jiaxu-portal", "home-server", "wiki", "meta",
 ]
 
+/**
+ * 已停用 / 冻结项目的组（2026-09-28）：条目仍在 TODO.md 里等解冻，但首页默认折叠成一行、排到最后。
+ * 此前 quant-flow（06-07 kill-switch 起冻结）6 条长条目整段铺开，占了卡片大半屏。
+ * 项目解冻时把它从这里删掉即可。
+ */
+const FROZEN_SYSTEMS = new Set(["quant-flow", "mt4", "mt5", "mt4-mt5"])
+
 function systemRank(s: string): number {
+  if (FROZEN_SYSTEMS.has(s)) return 10_000
   const i = SYSTEM_ORDER.indexOf(s)
   return i === -1 ? 999 : i
 }
@@ -106,6 +114,31 @@ export async function TodoCard() {
             const meta = SYSTEM_LABELS[sys] ?? {
               label: sys,
               tone: "border-zinc-500/30 bg-zinc-500/5 text-zinc-200",
+            }
+            if (FROZEN_SYSTEMS.has(sys)) {
+              return (
+                <details
+                  key={sys}
+                  className="group/frozen rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 text-zinc-500"
+                >
+                  <summary className="flex cursor-pointer list-none items-center justify-between text-xs">
+                    <span className="font-medium uppercase tracking-wide">
+                      {meta.label} <span className="normal-case text-zinc-600">· 项目已冻结</span>
+                    </span>
+                    <span className="text-[10px] text-zinc-600">
+                      {items.length} 条 <span className="group-open/frozen:hidden">▾</span>
+                      <span className="hidden group-open/frozen:inline">▴</span>
+                    </span>
+                  </summary>
+                  <ul className="mt-2 space-y-1.5 text-[11px]">
+                    {items.map((it, idx) => (
+                      <li key={idx} className="line-clamp-2 leading-relaxed text-zinc-400">
+                        {it.description}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )
             }
             return (
               <div

@@ -126,4 +126,81 @@ describe("readPmPaperSnapshot", () => {
     expect(snap.bootstrapping).toBe(false)
     expect(snap.predictionsCount).toBe(1)
   })
+  it("pm-live: 无 live/stats.json → live=null", async () => {
+    const snap = await readPmPaperSnapshot()
+    expect(snap.live).toBeNull()
+  })
+
+  it("pm-live: HALT 以文件为准（stats 滞后写 false 也算闩锁）+ 统计字段", async () => {
+    await fs.mkdir(path.join(dir, "live"))
+    await fs.writeFile(
+      path.join(dir, "live", "stats.json"),
+      JSON.stringify({ mode: "live", armed: true, halt: false, n_open: 1, n_filled: 2, n_settled: 0,
+        collateral_now: 47.997, anomalies: [{ x: 1 }] }),
+    )
+    await fs.writeFile(path.join(dir, "live", "HALT"), "")
+    const snap = await readPmPaperSnapshot()
+    expect(snap.live?.latches).toEqual(["HALT"])
+    expect(snap.live?.nOpen).toBe(1)
+    expect(snap.live?.nFilled).toBe(2)
+    expect(snap.live?.collateralNow).toBeCloseTo(47.997)
+    expect(snap.live?.anomalies).toBe(1)
+    expect(snap.halt).toBe(false) // live 的 HALT 不串到 paper 的 halt
+  })
+
+  it("pm-live: stats 里的 tuition_stop 也算闩锁；坏数字回落 0", async () => {
+    await fs.mkdir(path.join(dir, "live"))
+    await fs.writeFile(
+      path.join(dir, "live", "stats.json"),
+      JSON.stringify({ mode: "live", armed: true, tuition_stop: true, n_open: "x" }),
+    )
+    const snap = await readPmPaperSnapshot()
+    expect(snap.live?.latches).toEqual(["TUITION_STOP"])
+    expect(snap.live?.nOpen).toBe(0)
+    expect(snap.live?.collateralNow).toBeNull()
+  })
+  it("pm-live: 畸形布尔（字符串 \"false\"/\"true\"）不算点火也不算闩锁；paper 空态时 live 照样读得到", async () => {
+    await fs.mkdir(path.join(dir, "live"))
+    await fs.writeFile(
+      path.join(dir, "live", "stats.json"),
+      JSON.stringify({ mode: "live", armed: "false", halt: "true", n_open: 0 }),
+    )
+    const snap = await readPmPaperSnapshot()
+    expect(snap.bootstrapping).toBe(true)
+    expect(snap.live?.armed).toBe(false)
+    expect(snap.live?.latches).toEqual([])
+  })
+  it("pm-live: armed 需 stats 为 true 且 ARMED 文件在；新鲜快照 stale=false", async () => {
+    await fs.mkdir(path.join(dir, "live"))
+    await fs.writeFile(path.join(dir, "live", "stats.json"), JSON.stringify({ mode: "live", armed: true }))
+    let snap = await readPmPaperSnapshot()
+    expect(snap.live?.armed).toBe(false) // 没 ARMED 文件
+    expect(snap.live?.stale).toBe(false)
+    await fs.writeFile(path.join(dir, "live", "ARMED"), "token")
+    snap = await readPmPaperSnapshot()
+    expect(snap.live?.armed).toBe(true)
+  })
+
+  it("pm-live: stats 超过 26h 未更新 → stale=true", async () => {
+    await fs.mkdir(path.join(dir, "live"))
+    const f = path.join(dir, "live", "stats.json")
+    await fs.writeFile(f, JSON.stringify({ mode: "live", armed: true }))
+    const old = new Date(Date.now() - 27 * 3600 * 1000)
+    await fs.utimes(f, old, old)
+    const snap = await readPmPaperSnapshot()
+    expect(snap.live?.stale).toBe(true)
+  })
+
+  it("pm-live: 纸面 HALT 也让 live 显示闩锁；只有闩锁文件没有 stats 仍返回对象", async () => {
+    await fs.mkdir(path.join(dir, "live"))
+    await fs.writeFile(path.join(dir, "HALT"), "")
+    let snap = await readPmPaperSnapshot()
+    expect(snap.live?.latches).toEqual(["HALT(纸面)"])
+    expect(snap.live?.stale).toBe(true)
+    await fs.rm(path.join(dir, "HALT"))
+    await fs.writeFile(path.join(dir, "live", "POST_BLOCKED"), "")
+    snap = await readPmPaperSnapshot()
+    expect(snap.live?.latches).toEqual(["POST_BLOCKED"])
+    expect(snap.live?.collateralNow).toBeNull()
+  })
 })
