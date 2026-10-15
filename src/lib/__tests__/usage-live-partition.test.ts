@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { foldUnknownHomeRows, type SystemSummary } from "../usage-db"
+import { foldUnknownHomeRows, partitionRowsByHost, type SystemSummary } from "../usage-db"
 
 // foldUnknownHomeRows 保证 home 侧分区完备：ALL_SYSTEMS 白名单外的 system_name
 // 折进 other 桶而不是从 totals 蒸发（2026-08-06 worker-pool-other 事故的回归护栏）。
@@ -114,5 +114,42 @@ describe("foldUnknownHomeRows", () => {
     foldUnknownHomeRows(systems, [row({ system_name: "interactive", today_cost_usd: 1 })])
     expect(systems[0].today_total_tokens).toBe(9)
     expect(systems[0].today_cost_usd).toBe(0)
+  })
+})
+
+describe("partitionRowsByHost", () => {
+  test("home / gaming / 其余 三分，每行恰好落一个分区", () => {
+    const rows = [
+      row({ host: "home", system_name: "interactive" }),
+      row({ host: "home", system_name: "pm-paper" }),
+      row({ host: "gaming", system_name: "interactive" }),
+      row({ host: "mbp", system_name: "interactive" }),
+    ]
+    const { homeRows, gamingRows, mbpRows } = partitionRowsByHost(rows)
+    expect(homeRows).toHaveLength(2)
+    expect(gamingRows).toHaveLength(1)
+    expect(gamingRows[0].host).toBe("gaming")
+    expect(mbpRows).toHaveLength(1)
+    expect(homeRows.length + gamingRows.length + mbpRows.length).toBe(rows.length)
+  })
+
+  test("误配出的未知 host 落 MBP 桶，不从 totals 蒸发", () => {
+    const { homeRows, gamingRows, mbpRows } = partitionRowsByHost([
+      row({ host: "remote", system_name: "interactive" }),
+      row({ host: null, system_name: "interactive" }),
+    ])
+    expect(homeRows).toHaveLength(0)
+    expect(gamingRows).toHaveLength(0)
+    expect(mbpRows).toHaveLength(2)
+  })
+
+  test("host 不分大小写，与 MySQL _ci 列的 GROUP BY / CASE 口径一致", () => {
+    const { homeRows, gamingRows, mbpRows } = partitionRowsByHost([
+      row({ host: "HOME", system_name: "interactive" }),
+      row({ host: "Gaming", system_name: "interactive" }),
+    ])
+    expect(homeRows).toHaveLength(1)
+    expect(gamingRows).toHaveLength(1)
+    expect(mbpRows).toHaveLength(0)
   })
 })

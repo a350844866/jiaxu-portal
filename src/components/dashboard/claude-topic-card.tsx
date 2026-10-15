@@ -239,10 +239,10 @@ export async function ClaudeTopicCard() {
                 {hosts.map(([k, v]) => (
                   <ModeBar
                     key={k}
-                    label={k === "home" ? "家服" : k === "mbp" ? "MBP" : k}
+                    label={k === "home" ? "家服" : k === "mbp" ? "MBP" : k === "gaming" ? "电竞房" : k}
                     bucket={v}
                     total={total}
-                    tone={k === "home" ? "bg-emerald-500" : "bg-violet-500"}
+                    tone={k === "home" ? "bg-emerald-500" : k === "gaming" ? "bg-fuchsia-500" : "bg-violet-500"}
                   />
                 ))}
               </div>

@@ -71,7 +71,7 @@ function codexWeeklyResetUtc(): Date {
   return new Date(anchor.getTime() + weeksPassed * weekMs)
 }
 
-export type SystemName = "mt4" | "ibkr" | "quant-flow" | "auto-content" | "pm-paper" | "worker-pool-other" | "interactive" | "other" | "mbp"
+export type SystemName = "mt4" | "ibkr" | "quant-flow" | "auto-content" | "pm-paper" | "worker-pool-other" | "interactive" | "other" | "mbp" | "gaming"
 
 export interface SystemSummary {
   system: SystemName
@@ -99,7 +99,7 @@ export interface UsageLive {
     last1h_total_tokens: number
   }
   // 展志(zz-claude relay) 今日成本切片 + 占今日总量百分比。zz 折在 interactive 桶
-  // 里，单独查一次取出（反向规则：zz 有唯一稳定 cwd 前缀，其余含 mbp 都是 Taieo）。
+  // 里，单独查一次取出（反向规则：zz 有唯一稳定 cwd 前缀，其余含 mbp / gaming 都是 Taieo）。
   zhanzhi: {
     today_cost_usd: number
     mine_cost: number
@@ -296,7 +296,7 @@ function emptySummary(system: SystemName): SystemSummary {
   }
 }
 
-/** 把某个 host 的多 system_name 行聚合成单个 SystemSummary（用于 MBP 卡）。*/
+/** 把某个 host 的多 system_name 行聚合成单个 SystemSummary（用于 MBP / 电竞房卡）。*/
 function buildHostSummary(rows: mysql.RowDataPacket[], host: SystemName): SystemSummary {
   const acc = emptySummary(host)
   for (const r of rows) accumulateRow(acc, r)
@@ -306,7 +306,7 @@ function buildHostSummary(rows: mysql.RowDataPacket[], host: SystemName): System
 
 /**
  * home 侧分区完备：白名单（ALL_SYSTEMS）外的 system_name 折进 other，而不是静默蒸发。
- * MBP 侧 2026-06-03 就有这个保证（buildHostSummary 吃掉所有非 home 行），home 侧一直漏。
+ * 远端侧 2026-06-03 就有这个保证（partitionRowsByHost 把非 home 行全部分给 MBP / 电竞房），home 侧一直漏。
  *
  * 2026-08-06 实证：watcher 2026-05-18 起就在产 worker-pool-other 桶，portal 的
  * ALL_SYSTEMS.map() 从没认过它，8 月日均 $28 从 totals 里消失，页面表现为
@@ -333,6 +333,32 @@ export function foldUnknownHomeRows(
     folded = true
   }
   if (folded) recomputeTodayTotal(otherBucket)
+}
+
+/**
+ * 按 host 三分：home 进各系统卡，gaming（电竞房 Windows，2026-10-15 接入）单列，
+ * 其余全部归 MBP 桶。分区必须完备——即使将来 watcher 误配出第四个 host，也会落进
+ * MBP 桶而不是从 totals 里凭空蒸发（Codex review 2026-06-03）。
+ * host 比较不分大小写：列是 utf8mb4_0900_ai_ci，SQL 侧 GROUP BY / CASE 本就不分，
+ * 两边口径不一致时误配的 'Gaming' 会在 live 卡进 MBP、在 breakdown 进 gaming。
+ *
+ * 导出仅为单测用（见 __tests__/usage-live-partition.test.ts）。
+ */
+export function partitionRowsByHost(rows: mysql.RowDataPacket[]): {
+  homeRows: mysql.RowDataPacket[]
+  gamingRows: mysql.RowDataPacket[]
+  mbpRows: mysql.RowDataPacket[]
+} {
+  const homeRows: mysql.RowDataPacket[] = []
+  const gamingRows: mysql.RowDataPacket[] = []
+  const mbpRows: mysql.RowDataPacket[] = []
+  for (const r of rows) {
+    const host = String(r.host).toLowerCase()
+    if (host === "home") homeRows.push(r)
+    else if (host === "gaming") gamingRows.push(r)
+    else mbpRows.push(r)
+  }
+  return { homeRows, gamingRows, mbpRows }
 }
 
 export async function getUsageLive(): Promise<UsageLive> {
@@ -370,10 +396,7 @@ export async function getUsageLive(): Promise<UsageLive> {
     [todayUtc, todayUtc, todayUtc, todayUtc, todayUtc, monthUtc, monthUtc, monthUtc, asOfUtc],
   )
 
-  // 分区必须完备：home 一桶，其余全部归 MBP 桶（目前 mbp 是唯一远端 root，
-  // 即使将来 watcher 误配出第三个 host 也不会从 totals 里凭空蒸发——Codex review 2026-06-03）。
-  const homeRows = rows.filter((r) => String(r.host) === "home")
-  const mbpRows = rows.filter((r) => String(r.host) !== "home")
+  const { homeRows, gamingRows, mbpRows } = partitionRowsByHost(rows)
   const bySystem = new Map<string, mysql.RowDataPacket>()
   for (const r of homeRows) bySystem.set(String(r.system_name), r)
 
@@ -425,9 +448,10 @@ export async function getUsageLive(): Promise<UsageLive> {
     mergeBucketUsage(qf, quantFlowCodex)
   }
 
-  // MBP（公司机器）本地 Claude Code：host='mbp' 的所有 system_name 聚成一桶单列。
-  // 家服系统卡已过滤 host='home'，两者互斥，totals 对 systems 聚合每行恰好计一次。
+  // 远端机器本地 Claude Code 各聚成一桶单列：MBP（公司）= 除 home / gaming 外的全部 host，
+  // 电竞房 = host='gaming'。三个分区互斥，totals 对 systems 聚合每行恰好计一次。
   systems.push(buildHostSummary(mbpRows, "mbp"))
+  systems.push(buildHostSummary(gamingRows, "gaming"))
 
   const totals = systems.reduce(
     (acc, s) => {
@@ -959,7 +983,7 @@ export async function getUsageBreakdown(hours = 24): Promise<BreakdownPoint[]> {
     `
     SELECT
       DATE_FORMAT(DATE_ADD(ts, INTERVAL -MINUTE(ts) MINUTE), '%Y-%m-%dT%H:00:00Z') AS hour_utc,
-      CASE WHEN host = 'home' THEN system_name ELSE 'mbp' END AS system,
+      CASE WHEN host = 'home' THEN system_name WHEN host = 'gaming' THEN 'gaming' ELSE 'mbp' END AS system,
       model,
       SUM(input_tokens + output_tokens + cache_read_tokens + cache_create_tokens) AS total_tokens,
       SUM(cost_usd) AS cost_usd

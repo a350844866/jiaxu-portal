@@ -1,10 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Activity, Bot, Boxes, FileText, Laptop, LineChart, MessageSquare, TrendingUp, Vote } from "lucide-react"
+import { Activity, Bot, Boxes, FileText, Gamepad2, Laptop, LineChart, MessageSquare, TrendingUp, Vote } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-type SystemName = "mt4" | "ibkr" | "quant-flow" | "auto-content" | "pm-paper" | "worker-pool-other" | "interactive" | "other" | "mbp"
+type SystemName = "mt4" | "ibkr" | "quant-flow" | "auto-content" | "pm-paper" | "worker-pool-other" | "interactive" | "other" | "mbp" | "gaming"
 
 interface SystemSummary {
   system: SystemName
@@ -48,6 +48,7 @@ const LABELS: Record<SystemName, { name: string; icon: typeof Bot; tone: string 
   "worker-pool-other": { name: "worker-pool 跑批", icon: Boxes,   tone: "from-cyan-500/15 to-cyan-500/0 border-cyan-500/25"      },
   interactive:    { name: "Interactive",    icon: MessageSquare, tone: "from-emerald-500/15 to-emerald-500/0 border-emerald-500/25" },
   mbp:            { name: "MBP (公司)",     icon: Laptop,        tone: "from-rose-500/15 to-rose-500/0 border-rose-500/25"      },
+  gaming:         { name: "电竞房 PC",       icon: Gamepad2,      tone: "from-fuchsia-500/15 to-fuchsia-500/0 border-fuchsia-500/25" },
   other:          { name: "其他",            icon: Activity,      tone: "from-zinc-500/15 to-zinc-500/0 border-zinc-500/25"     },
 }
 
@@ -56,7 +57,8 @@ const LABELS: Record<SystemName, { name: string; icon: typeof Bot; tone: string 
 // 它 2026-05-18 就在入库,但一直不在 VISIBLE 也不在 ALL_SYSTEMS,整桶不计入合计
 // quant-flow 自 2026-06-07 kill-switch 冻结，桶常年为 0 → 2026-09-28 起只在本月真有花费时才出 tile
 // (桶仍在 usage-db ALL_SYSTEMS 里参与合计，这里只管展示)
-const VISIBLE: SystemName[] = ["auto-content", "worker-pool-other", "pm-paper", "interactive", "mbp"]
+// 电竞房 Windows 主机 (host=gaming) 2026-10-15 接入：本地计划任务推 jsonl → 家服 watcher，单列一格
+const VISIBLE: SystemName[] = ["auto-content", "worker-pool-other", "pm-paper", "interactive", "mbp", "gaming"]
 const DORMANT: SystemName[] = ["quant-flow"]
 // Tailwind 类名必须是字面量，按 tile 数取
 const XL_COLS: Record<number, string> = { 4: "xl:grid-cols-4", 5: "xl:grid-cols-5", 6: "xl:grid-cols-6", 7: "xl:grid-cols-7" }
