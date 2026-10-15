@@ -983,13 +983,14 @@ export async function getUsageBreakdown(hours = 24): Promise<BreakdownPoint[]> {
     `
     SELECT
       DATE_FORMAT(DATE_ADD(ts, INTERVAL -MINUTE(ts) MINUTE), '%Y-%m-%dT%H:00:00Z') AS hour_utc,
-      CASE WHEN host = 'home' THEN system_name WHEN host = 'gaming' THEN 'gaming' ELSE 'mbp' END AS system,
+      -- SYSTEM 是 MySQL 8 保留字，别名不加反引号整条 SQL 解析失败（本接口 2026-04 建起就一直 503）
+      CASE WHEN host = 'home' THEN system_name WHEN host = 'gaming' THEN 'gaming' ELSE 'mbp' END AS \`system\`,
       model,
       SUM(input_tokens + output_tokens + cache_read_tokens + cache_create_tokens) AS total_tokens,
       SUM(cost_usd) AS cost_usd
     FROM usage_events
     WHERE ts >= UTC_TIMESTAMP() - INTERVAL ? HOUR
-    GROUP BY hour_utc, system, model
+    GROUP BY hour_utc, \`system\`, model
     ORDER BY hour_utc ASC
     `,
     [hours]
