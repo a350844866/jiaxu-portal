@@ -1,6 +1,8 @@
 import { Suspense } from "react"
+import { headers } from "next/headers"
 import { services } from "@/config/services-data"
 import { checkAllServices } from "@/lib/health-checker"
+import { modeFromHost, requestHost } from "@/lib/network-mode"
 import { CardSkeleton } from "@/components/dashboard/card-skeleton"
 import { Header } from "@/components/layout/header"
 import { ServiceGrid } from "@/components/dashboard/service-grid"
@@ -31,10 +33,17 @@ export const dynamic = "force-dynamic"
  * 2026-08-15 前它在 Home() 顶层 await——首页是无 Suspense 的阻塞式 Server
  * Component,任一探针慢就压住整个首屏(实测 auto-content 探针吃满 5s 超时时
  * TTFB 到 9.3s)。拆成独立边界后,慢的只推迟它自己那块。
+ *
+ * 网络模式初值也在这里按请求 Host 算(2026-10-18):此前 SSR 写死 external,内网首屏
+ * 卡片 href 全是公网 URL,要等 hydration 后才换成内网直连。客户端仍会按真实 hostname 校正。
  */
 async function ServiceGridSection() {
+  const h = await headers()
+  const initialNetworkMode = modeFromHost(requestHost(h.get("x-forwarded-host"), h.get("host")))
   const health = await checkAllServices(services)
-  return <ServiceGrid services={services} initialHealth={health} />
+  return (
+    <ServiceGrid services={services} initialHealth={health} initialNetworkMode={initialNetworkMode} />
+  )
 }
 
 export default function Home() {

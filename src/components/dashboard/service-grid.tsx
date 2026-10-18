@@ -8,7 +8,7 @@ import { SearchBar } from "./search-bar"
 import { StatusSummary } from "./status-summary"
 import { CronJobsBlock } from "./cron-jobs-block"
 import { useServiceFilter } from "@/hooks/use-service-filter"
-import { useNetworkMode } from "@/hooks/use-network-mode"
+import { useNetworkMode, type NetworkMode } from "@/hooks/use-network-mode"
 import { useHealthPolling } from "@/hooks/use-health-polling"
 import { useHiddenServices } from "@/hooks/use-hidden-services"
 import { iconMap } from "@/lib/icon-map"
@@ -20,6 +20,8 @@ import { FeErrorCard } from "./fe-error-card"
 interface ServiceGridProps {
   services: ServiceDefinition[]
   initialHealth: HealthResult[]
+  /** SSR 按请求 Host 判出的网络模式,作首屏初值(见 lib/network-mode.ts) */
+  initialNetworkMode?: NetworkMode
 }
 
 function CategoryIcon({ name }: { name: string }) {
@@ -28,9 +30,9 @@ function CategoryIcon({ name }: { name: string }) {
   return <Icon className="h-4 w-4 text-zinc-400" />
 }
 
-export function ServiceGrid({ services, initialHealth }: ServiceGridProps) {
+export function ServiceGrid({ services, initialHealth, initialNetworkMode }: ServiceGridProps) {
   const { query, setQuery, filtered } = useServiceFilter(services)
-  const networkMode = useNetworkMode()
+  const networkMode = useNetworkMode(initialNetworkMode)
   const health = useHealthPolling(initialHealth)
   const { editing, setEditing, toggle, isHidden } = useHiddenServices()
 
